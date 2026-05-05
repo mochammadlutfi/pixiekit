@@ -1,0 +1,48 @@
+# Rust
+target/
+Cargo.lock.bak
+**/*.rs.bk
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+*.DS_Store
+
+# Test fixtures (user-provided)
+tests/fixtures/output/
+tests/fixtures/.cache/
+
+# Tauri (future)
+**/dist/
+**/node_modules/
+
+# Nuxt (future)
+.nuxt/
+.output/
+.nitro/
+.cache/
+
+# Local config
+config.local.toml
+*.env
+.env.local
+
+# Python (clean-bg.py legacy fallback)
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Logs
+*.log
+logs/
+
+# Build artifacts
+*.dmg
+*.app/
+*.exe
