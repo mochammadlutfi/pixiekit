@@ -35,6 +35,23 @@ cargo build --release --workspace
   --input ./videos --output ./sprites --fps 8 --size 256 --chroma-key
 ```
 
+## MCP server (Claude Code integration)
+
+Pixiekit ships an MCP server (`pixiekit-mcp`) speaking JSON-RPC 2.0 over stdio.
+After a release build, register it in Claude Code:
+
+```bash
+claude mcp add pixiekit -- /absolute/path/to/target/release/pixiekit-mcp
+```
+
+Tools exposed:
+- `bg_remove` — chroma key + despill + erode (batch folder)
+- `video_to_sprite` — ffmpeg-based frame extraction + horizontal stitch
+- `vectorize` — *stub until Phase 3 lands*; use the CLI in the meantime
+- `list_presets` — reserved for Phase 6, returns empty list
+
+Stderr carries diagnostics; stdout is reserved for protocol messages.
+
 ## Roadmap
 
 | Phase | Scope | Status |
@@ -42,7 +59,7 @@ cargo build --release --workspace
 | 1 | Workspace + `core::bg_remove` + CLI | ✅ |
 | 2 | `core::video_to_sprite` + CLI | ✅ |
 | 3 | `core::vectorize` + CLI | ⏳ |
-| 4 | MCP server (stdio) | ⏳ |
+| 4 | MCP server (stdio) | ✅ |
 | 5 | SaaS — Nuxt 4 frontend + axum backend | ⏳ |
 | 6 | (Optional) Tauri desktop bundle | ⏳ |
 
