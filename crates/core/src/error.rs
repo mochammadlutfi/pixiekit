@@ -41,4 +41,7 @@ pub enum Error {
         got_w: u32,
         got_h: u32,
     },
+
+    #[error("vtracer failed: {0}")]
+    VtracerFailed(String),
 }
