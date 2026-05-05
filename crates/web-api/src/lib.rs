@@ -32,6 +32,7 @@ pub fn build_router(cors_origins: Option<Vec<String>>) -> Router {
         .merge(routes::bg_remove::router())
         .merge(routes::video_to_sprite::router())
         .merge(routes::vectorize::router())
+        .merge(routes::presets::router())
         .layer(cors)
         .layer(RequestBodyLimitLayer::new(REQUEST_BODY_LIMIT))
         .layer(TraceLayer::new_for_http())

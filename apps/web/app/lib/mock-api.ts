@@ -1,6 +1,9 @@
 /**
  * Mock backend that simulates Phase 5a axum responses.
  * Used when VITE_PIXIEKIT_API_URL is not set, for standalone frontend dev.
+ *
+ * Presets in mock mode persist in localStorage under `pixiekit:presets:v2` so
+ * the on-disk shape (a flat list across tools) matches the real backend.
  */
 
 import type { ApiClient } from '~/lib/api-client'
@@ -8,13 +11,34 @@ import type {
   BatchResponse,
   BgRemoveOptions,
   HealthResponse,
+  Preset,
   ProcessedFile,
   ProgressCallback,
+  ToolId,
   VectorizeOptions,
   VectorizeResponse,
   VideoToSpriteOptions,
   VideoToSpriteResponse,
 } from '~/types/pixiekit'
+
+const PRESET_STORAGE_KEY = 'pixiekit:presets:v2'
+
+function readPresetStore(): Preset<unknown>[] {
+  if (typeof localStorage === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(PRESET_STORAGE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as Preset<unknown>[]
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+function writePresetStore(presets: Preset<unknown>[]): void {
+  if (typeof localStorage === 'undefined') return
+  localStorage.setItem(PRESET_STORAGE_KEY, JSON.stringify(presets))
+}
 
 const MOCK_FILES = [
   'wave_01.png',
@@ -117,6 +141,39 @@ export function createMockApiClient(): ApiClient {
         files: processedFiles,
         svg_data_uri: dataUriPlaceholder('SVG preview', '#FFB88C'),
       }
+    },
+
+    async listPresets(): Promise<Preset<unknown>[]> {
+      await sleep(20)
+      return readPresetStore()
+    },
+
+    async getPreset(name: string): Promise<Preset<unknown> | null> {
+      await sleep(20)
+      return readPresetStore().find(p => p.name === name) ?? null
+    },
+
+    async savePreset(
+      name: string,
+      tool: ToolId,
+      options: unknown,
+    ): Promise<Preset<unknown>> {
+      await sleep(20)
+      const trimmed = name.trim()
+      const without = readPresetStore().filter(p => p.name !== trimmed)
+      const next: Preset<unknown> = {
+        name: trimmed,
+        tool,
+        options,
+        created_at: Date.now(),
+      }
+      writePresetStore([...without, next])
+      return next
+    },
+
+    async deletePreset(name: string): Promise<void> {
+      await sleep(20)
+      writePresetStore(readPresetStore().filter(p => p.name !== name))
     },
 
     async processVideoToSprite(
