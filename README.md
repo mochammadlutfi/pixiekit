@@ -10,7 +10,7 @@ Local asset preparation toolkit (Rust) untuk game / animation pipeline.
 Triple-access:
 - **CLI** (`pixiekit-cli`) — untuk scripting + AI agent (Claude Code subprocess)
 - **MCP server** (`pixiekit-mcp`) — native Claude Code integration via stdio
-- **Web SaaS** (planned, Phase 5) — Nuxt 4 frontend + axum backend
+- **Web SaaS** — Nuxt 4 frontend + axum backend (`pixiekit-web-api`, Phase 5a ✅)
 
 ## Status
 
@@ -34,6 +34,42 @@ cargo build --release --workspace
 ./target/release/pixiekit-cli video-to-sprite \
   --input ./videos --output ./sprites --fps 8 --size 256 --chroma-key
 ```
+
+## Web backend (Phase 5a)
+
+REST API server (`pixiekit-web-api`) wraps the core tools for the SaaS
+frontend. See [`docs/API.md`](docs/API.md) for the full contract.
+
+```bash
+PORT=8765 cargo run --release --bin pixiekit-web-api
+# → listening on 0.0.0.0:8765
+
+# Smoke test
+curl http://localhost:8765/api/health
+# {"status":"ok","version":"0.1.0"}
+```
+
+Configurable env: `HOST`, `PORT`, `CORS_ALLOWED_ORIGINS` (comma-separated),
+`RUST_LOG`. Body limit is 100 MiB so videos fit. The vectorize endpoint is
+a 501 stub until Phase 3 (`core::vectorize`) merges to `main`.
+
+## Web frontend (Phase 5b)
+
+A Nuxt 4 dashboard wraps the three tools for non-CLI users. By default it
+runs against a mock backend so you can iterate on the UI without the Rust
+backend running.
+
+```bash
+cd apps/web
+pnpm install
+pnpm dev
+# → http://localhost:3000
+
+# To target the real Phase 5a axum backend:
+VITE_PIXIEKIT_API_URL=http://localhost:8787 pnpm dev
+```
+
+See [`apps/web/README.md`](apps/web/README.md) for layout and conventions.
 
 ## Roadmap
 
