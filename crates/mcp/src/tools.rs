@@ -10,7 +10,7 @@ use std::time::Instant;
 use rayon::prelude::*;
 use serde_json::{json, Value};
 
-use pixiekit_core::{batch, bg_remove, video_to_sprite};
+use pixiekit_core::{batch, bg_remove, vectorize, video_to_sprite};
 
 use crate::server::{ERR_INTERNAL, ERR_INVALID_PARAMS, ERR_METHOD_NOT_FOUND};
 
@@ -114,9 +114,7 @@ pub fn call(params: Option<&Value>) -> Result<Value, ToolError> {
     match name {
         "bg_remove" => bg_remove_handler(&args),
         "video_to_sprite" => video_to_sprite_handler(&args),
-        "vectorize" => Err(ToolError::internal(
-            "Vectorize tool will be available after Phase 3 merge. Use CLI `pixiekit-cli vectorize` for now.",
-        )),
+        "vectorize" => vectorize_handler(&args),
         "list_presets" => list_presets_handler(),
         other => Err(ToolError::unknown_tool(other)),
     }
@@ -414,6 +412,114 @@ fn process_one_video(
     }
 }
 
+// ---------- vectorize ----------
+
+fn vectorize_handler(args: &Value) -> Result<Value, ToolError> {
+    let input = require_string(args, "input")?;
+    let output = require_string(args, "output")?;
+
+    let mode_str = args
+        .get("mode")
+        .and_then(|v| v.as_str())
+        .unwrap_or("color")
+        .to_ascii_lowercase();
+    let mode = match mode_str.as_str() {
+        "color" => vectorize::Mode::Color,
+        "binary" => vectorize::Mode::Binary,
+        other => {
+            return Err(ToolError::invalid_params(format!(
+                "mode: expected color|binary, got {other}"
+            )))
+        }
+    };
+
+    let smooth = args
+        .get("smooth")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(4)
+        .min(10) as u8;
+    let (corner_threshold, length_threshold, splice_threshold) =
+        vectorize::smooth_to_params(smooth);
+
+    let opts = vectorize::Options {
+        mode,
+        corner_threshold,
+        length_threshold,
+        splice_threshold,
+        ..Default::default()
+    };
+
+    let input_path = PathBuf::from(&input);
+    let output_path = PathBuf::from(&output);
+
+    let files = batch::list_images(&input_path, false, &["png", "jpg", "jpeg", "webp"])
+        .map_err(|e| ToolError::internal(format!("Listing input: {e}")))?;
+
+    if files.is_empty() {
+        return Ok(tool_text_result(
+            format!("No images found in {}", input_path.display()),
+            json!({
+                "processed": 0,
+                "failed": 0,
+                "duration_ms": 0,
+                "output_dir": output_path.to_string_lossy(),
+                "files": [],
+            }),
+        ));
+    }
+
+    std::fs::create_dir_all(&output_path)
+        .map_err(|e| ToolError::internal(format!("Creating output dir: {e}")))?;
+
+    let start = Instant::now();
+    let results: Vec<FileResult> = files
+        .par_iter()
+        .map(|input_path| {
+            let stem = input_path
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "out".into());
+            let svg_path = output_path.join(format!("{stem}.svg"));
+            match vectorize::process(input_path, &svg_path, &opts) {
+                Ok(()) => FileResult {
+                    input: input_path.clone(),
+                    output: Some(svg_path),
+                    error: None,
+                },
+                Err(e) => FileResult {
+                    input: input_path.clone(),
+                    output: None,
+                    error: Some(format!("{e}")),
+                },
+            }
+        })
+        .collect();
+
+    let processed = results.iter().filter(|r| r.error.is_none()).count();
+    let failed = results.len() - processed;
+    let duration_ms = start.elapsed().as_millis();
+
+    Ok(tool_text_result(
+        format!(
+            "Vectorized {processed}/{} images in {duration_ms}ms (output: {})",
+            results.len(),
+            output_path.display()
+        ),
+        json!({
+            "processed": processed,
+            "failed": failed,
+            "duration_ms": duration_ms,
+            "output_dir": output_path.to_string_lossy(),
+            "files": results.iter().map(|r| json!({
+                "input": r.input,
+                "output": r.output,
+                "status": if r.error.is_none() { "ok" } else { "failed" },
+                "error": r.error,
+            })).collect::<Vec<_>>(),
+        }),
+    ))
+}
+
 // ---------- list_presets ----------
 
 fn list_presets_handler() -> Result<Value, ToolError> {
@@ -546,20 +652,38 @@ mod tests {
     }
 
     #[test]
-    fn vectorize_returns_not_implemented_stub() {
+    fn vectorize_missing_input_returns_invalid_params() {
         let params = json!({
             "name": "vectorize",
-            "arguments": { "input": "/tmp/in.png", "output": "/tmp/out.svg" }
+            "arguments": { "output": "/tmp/out" }
         });
         let err = call(Some(&params)).unwrap_err();
-        assert_eq!(err.code, ERR_INTERNAL);
-        assert!(
-            err.message.to_lowercase().contains("phase 3")
-                || err.message.to_lowercase().contains("not implemented")
-                || err.message.to_lowercase().contains("vectorize"),
-            "msg was: {}",
-            err.message
-        );
+        assert_eq!(err.code, ERR_INVALID_PARAMS);
+    }
+
+    #[test]
+    fn vectorize_invalid_mode_returns_invalid_params() {
+        let params = json!({
+            "name": "vectorize",
+            "arguments": { "input": "/tmp/in", "output": "/tmp/out", "mode": "rainbow" }
+        });
+        let err = call(Some(&params)).unwrap_err();
+        assert_eq!(err.code, ERR_INVALID_PARAMS);
+    }
+
+    #[test]
+    fn vectorize_empty_input_dir_returns_zero() {
+        let dir =
+            std::env::temp_dir().join(format!("pixiekit-mcp-vec-empty-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let params = json!({
+            "name": "vectorize",
+            "arguments": { "input": dir.to_string_lossy(), "output": dir.to_string_lossy() }
+        });
+        let result = call(Some(&params)).unwrap();
+        assert_eq!(result["structuredContent"]["processed"], 0);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

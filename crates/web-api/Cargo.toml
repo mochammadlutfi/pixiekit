@@ -1,0 +1,37 @@
+[package]
+name = "pixiekit-web-api"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Pixiekit SaaS REST API server (axum) — wraps core tools"
+
+[[bin]]
+name = "pixiekit-web-api"
+path = "src/main.rs"
+
+[lib]
+name = "pixiekit_web_api"
+path = "src/lib.rs"
+
+[dependencies]
+pixiekit-core = { path = "../core" }
+axum = { version = "0.8", features = ["multipart"] }
+tokio = { version = "1", features = ["full"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace", "limit"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tempfile = { workspace = true }
+image = { workspace = true }
+webp = { workspace = true }
+rayon = { workspace = true }
+
+[dev-dependencies]
+http-body-util = "0.1"
+mime = "0.3"
