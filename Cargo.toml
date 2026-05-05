@@ -28,6 +28,7 @@ tempfile = "3.10"
 webp = "0.3"
 vtracer = "0.6"
 visioncortex = "0.8"
+directories = "5"
 
 # Release profile — small binary, fast runtime
 [profile.release]

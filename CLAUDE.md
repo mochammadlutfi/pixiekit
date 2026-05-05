@@ -104,12 +104,19 @@ Phase 1; automated diff in Phase 6).
 
 | Phase | Scope | Status | Branch |
 |-------|-------|:------:|--------|
-| 1 | core::bg_remove + cli | 🚧 in progress | `main` |
-| 2 | core::video_to_sprite + cli | ⏳ | — |
-| 3 | core::vectorize + cli | ⏳ | — |
-| 4 | MCP server (stdio) | ⏳ | — |
-| 5 | SaaS — Nuxt 4 + axum | ⏳ | — |
-| 6 | (Optional) Tauri desktop | ⏳ | — |
+| 1 | core::bg_remove + cli | ✅ done | `main` |
+| 2 | core::video_to_sprite + cli | ✅ done | `main` |
+| 3 | core::vectorize + cli | ✅ done | `main` |
+| 4 | MCP server (stdio) | ✅ done | `main` |
+| 5a | SaaS axum backend | ✅ done | `main` |
+| 5b | SaaS Nuxt 4 frontend | ✅ done | `main` |
+| 6 | Polish — preset CLI + humanized errors | 🚧 in progress | `claude/continue-latest-phase-bjaMH` |
+| 7 | (Optional) Tauri desktop | ⏳ deferred | — |
+
+Phase 6 scope (current branch) — preset save/load via `pixiekit-cli preset
+{save,list,show,delete,path}` (PRD §7.1.5) plus `--config <PATH>` on each tool
+to load a preset's options (PRD §7.1.1). Presets persist as JSON under
+`~/.config/pixiekit/presets/` (override with `PIXIEKIT_CONFIG_DIR`).
 
 When starting a new phase, create a feature branch:
 `git checkout -b feat/phase-N-{tool}`. Merge to `main` via PR (or fast-forward

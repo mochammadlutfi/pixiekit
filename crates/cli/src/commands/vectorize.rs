@@ -6,7 +6,7 @@ use clap::Args as ClapArgs;
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 
-use pixiekit_core::{batch, vectorize};
+use pixiekit_core::{batch, preset, vectorize};
 
 #[derive(ClapArgs, Debug)]
 pub struct Args {
@@ -70,32 +70,42 @@ pub struct Args {
     /// JSON output (for AI / scripting)
     #[arg(long)]
     pub json: bool,
+
+    /// Load tool options from a preset JSON file (overrides individual flags)
+    #[arg(long, value_name = "PATH")]
+    pub config: Option<PathBuf>,
 }
 
 pub fn run(args: Args) -> Result<()> {
-    let mode = parse_mode(&args.mode)
-        .with_context(|| format!("Invalid --mode: {} (expected color|binary)", args.mode))?;
+    crate::commands::preflight_input(&args.input)?;
 
-    // If --smooth is provided, derive corner/length/splice from the slider;
-    // otherwise honour the individual flags.
-    let (corner_threshold, length_threshold, splice_threshold) = match args.smooth {
-        Some(s) => vectorize::smooth_to_params(s),
-        None => (
-            args.corner_threshold,
-            args.length_threshold,
-            args.splice_threshold,
-        ),
-    };
-
-    let opts = vectorize::Options {
-        mode,
-        filter_speckle: args.filter_speckle,
-        color_precision: args.color_precision,
-        layer_difference: args.layer_difference,
-        corner_threshold,
-        length_threshold,
-        splice_threshold,
-        path_precision: args.path_precision,
+    let opts = match &args.config {
+        Some(path) => load_options_from_config(path)?,
+        None => {
+            let mode = parse_mode(&args.mode).with_context(|| {
+                format!("Invalid --mode: {} (expected color|binary)", args.mode)
+            })?;
+            // If --smooth is provided, derive corner/length/splice from the slider;
+            // otherwise honour the individual flags.
+            let (corner_threshold, length_threshold, splice_threshold) = match args.smooth {
+                Some(s) => vectorize::smooth_to_params(s),
+                None => (
+                    args.corner_threshold,
+                    args.length_threshold,
+                    args.splice_threshold,
+                ),
+            };
+            vectorize::Options {
+                mode,
+                filter_speckle: args.filter_speckle,
+                color_precision: args.color_precision,
+                layer_difference: args.layer_difference,
+                corner_threshold,
+                length_threshold,
+                splice_threshold,
+                path_precision: args.path_precision,
+            }
+        }
     };
 
     let files = batch::list_images(&args.input, args.recursive, &["png", "jpg", "jpeg", "webp"])
@@ -232,6 +242,15 @@ fn process_one(
         .with_context(|| format!("Vectorizing {}", input_path.display()))?;
 
     Ok(output_path)
+}
+
+fn load_options_from_config(path: &Path) -> Result<vectorize::Options> {
+    let preset = preset::load_from_path(path)
+        .with_context(|| format!("Loading preset {}", path.display()))?;
+    preset::ensure_tool(&preset, preset::TOOL_VECTORIZE)
+        .with_context(|| format!("Preset {} is not a vectorize preset", path.display()))?;
+    serde_json::from_value(preset.options)
+        .with_context(|| format!("Decoding vectorize options from {}", path.display()))
 }
 
 fn parse_mode(s: &str) -> Result<vectorize::Mode> {

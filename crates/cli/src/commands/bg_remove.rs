@@ -6,7 +6,7 @@ use clap::Args as ClapArgs;
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 
-use pixiekit_core::{batch, bg_remove};
+use pixiekit_core::{batch, bg_remove, preset};
 
 #[derive(ClapArgs, Debug)]
 pub struct Args {
@@ -49,17 +49,27 @@ pub struct Args {
     /// JSON output (for AI / scripting)
     #[arg(long)]
     pub json: bool,
+
+    /// Load tool options from a preset JSON file (overrides individual flags)
+    #[arg(long, value_name = "PATH")]
+    pub config: Option<PathBuf>,
 }
 
 pub fn run(args: Args) -> Result<()> {
-    let target = parse_hex_color(&args.target_color)
-        .with_context(|| format!("Invalid --target-color: {}", args.target_color))?;
+    crate::commands::preflight_input(&args.input)?;
 
-    let opts = bg_remove::Options {
-        target_color: target,
-        fuzz: args.fuzz,
-        despill: !args.no_despill,
-        erode: args.erode,
+    let opts = match &args.config {
+        Some(path) => load_options_from_config(path)?,
+        None => {
+            let target = parse_hex_color(&args.target_color)
+                .with_context(|| format!("Invalid --target-color: {}", args.target_color))?;
+            bg_remove::Options {
+                target_color: target,
+                fuzz: args.fuzz,
+                despill: !args.no_despill,
+                erode: args.erode,
+            }
+        }
     };
 
     let files = batch::list_images(&args.input, args.recursive, &["png", "jpg", "jpeg", "webp"])
@@ -202,6 +212,15 @@ fn process_one(
         .with_context(|| format!("Writing {}", output_path.display()))?;
 
     Ok(output_path)
+}
+
+fn load_options_from_config(path: &Path) -> Result<bg_remove::Options> {
+    let preset = preset::load_from_path(path)
+        .with_context(|| format!("Loading preset {}", path.display()))?;
+    preset::ensure_tool(&preset, preset::TOOL_BG_REMOVE)
+        .with_context(|| format!("Preset {} is not a bg-remove preset", path.display()))?;
+    serde_json::from_value(preset.options)
+        .with_context(|| format!("Decoding bg-remove options from {}", path.display()))
 }
 
 fn parse_hex_color(s: &str) -> Result<[u8; 3]> {

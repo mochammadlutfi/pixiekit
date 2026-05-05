@@ -75,6 +75,12 @@ fn map_core_error(e: &CoreError) -> StatusCode {
         CoreError::InconsistentFrameSize { .. } => StatusCode::UNPROCESSABLE_ENTITY,
         CoreError::VtracerFailed(_) => StatusCode::UNPROCESSABLE_ENTITY,
         CoreError::Io(_) | CoreError::Walk(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        // Preset-related errors are CLI-side concerns; the web API does not
+        // expose presets, so any leaking here is unexpected.
+        CoreError::ConfigDir(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        CoreError::InvalidPresetName(_) => StatusCode::BAD_REQUEST,
+        CoreError::PresetNotFound { .. } => StatusCode::NOT_FOUND,
+        CoreError::PresetToolMismatch { .. } => StatusCode::BAD_REQUEST,
     }
 }
 
