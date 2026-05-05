@@ -1,0 +1,22 @@
+[package]
+name = "pixiekit-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Pixiekit MCP server (stdio transport)"
+
+[[bin]]
+name = "pixiekit-mcp"
+path = "src/main.rs"
+
+[dependencies]
+pixiekit-core = { path = "../core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+rayon = { workspace = true }
+image = { workspace = true }
+webp = { workspace = true }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-std", "io-util"] }
