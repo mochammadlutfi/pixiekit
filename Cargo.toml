@@ -1,0 +1,30 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/core",
+    "crates/cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["Mochammad Lutfi <mochammadlutfi125@gmail.com>"]
+repository = "https://github.com/mochammadlutfi/pixiekit"
+
+[workspace.dependencies]
+anyhow = "1.0"
+thiserror = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+image = "0.25"
+walkdir = "2.5"
+rayon = "1.10"
+clap = { version = "4.5", features = ["derive"] }
+indicatif = "0.17"
+
+# Release profile — small binary, fast runtime
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
