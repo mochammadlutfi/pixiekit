@@ -104,12 +104,29 @@ Phase 1; automated diff in Phase 6).
 
 | Phase | Scope | Status | Branch |
 |-------|-------|:------:|--------|
-| 1 | core::bg_remove + cli | 🚧 in progress | `main` |
-| 2 | core::video_to_sprite + cli | ⏳ | — |
-| 3 | core::vectorize + cli | ⏳ | — |
-| 4 | MCP server (stdio) | ⏳ | — |
-| 5 | SaaS — Nuxt 4 + axum | ⏳ | — |
-| 6 | (Optional) Tauri desktop | ⏳ | — |
+| 1 | core::bg_remove + cli | ✅ done | `main` |
+| 2 | core::video_to_sprite + cli | ✅ done | `main` |
+| 3 | core::vectorize + cli | ✅ done | `main` |
+| 4 | MCP server (stdio) | ✅ done | `main` |
+| 5a | SaaS axum backend | ✅ done | `main` |
+| 5b | SaaS Nuxt 4 frontend | ✅ done | `main` |
+| 6 | Polish — presets across CLI/MCP/web + humanized errors | ✅ done | `main` |
+| 7 | (Optional) Tauri desktop | ⏳ deferred | — |
+
+Phase 6 ships preset save/load uniformly across surfaces, all backed by
+`pixiekit_core::preset` (JSON under `~/.config/pixiekit/presets/`, override
+with `PIXIEKIT_CONFIG_DIR`):
+
+- **CLI** — `pixiekit-cli preset {save,list,show,delete,path}` (PRD §7.1.5)
+  plus `--config <PATH>` on each tool to load a preset's options (PRD §7.1.1).
+- **MCP** — `list_presets` (real) + `get_preset` tools (PRD §7.3.2).
+- **Web API** — `/api/presets` CRUD (GET list / GET :name / PUT :name /
+  DELETE :name).
+- **Nuxt frontend** — `useToolPreset` writes through `usePixiekitApi()`, so
+  presets sync with the backend in real mode and mirror in localStorage in
+  mock mode.
+
+M6.4 humanizes per-tool input preflight errors with single-line hints.
 
 When starting a new phase, create a feature branch:
 `git checkout -b feat/phase-N-{tool}`. Merge to `main` via PR (or fast-forward

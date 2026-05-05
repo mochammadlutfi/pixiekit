@@ -26,6 +26,9 @@ enum Commands {
 
     /// Extract video frames into a horizontal sprite sheet
     VideoToSprite(commands::video_to_sprite::Args),
+
+    /// Manage saved presets (save / list / show / delete)
+    Preset(commands::preset::Args),
 }
 
 fn main() -> Result<()> {
@@ -34,5 +37,6 @@ fn main() -> Result<()> {
         Commands::BgRemove(args) => commands::bg_remove::run(args),
         Commands::Vectorize(args) => commands::vectorize::run(args),
         Commands::VideoToSprite(args) => commands::video_to_sprite::run(args),
+        Commands::Preset(args) => commands::preset::run(args),
     }
 }

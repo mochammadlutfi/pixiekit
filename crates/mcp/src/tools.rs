@@ -10,7 +10,7 @@ use std::time::Instant;
 use rayon::prelude::*;
 use serde_json::{json, Value};
 
-use pixiekit_core::{batch, bg_remove, vectorize, video_to_sprite};
+use pixiekit_core::{batch, bg_remove, preset, vectorize, video_to_sprite};
 
 use crate::server::{ERR_INTERNAL, ERR_INVALID_PARAMS, ERR_METHOD_NOT_FOUND};
 
@@ -96,8 +96,19 @@ pub fn list_tools() -> Vec<Value> {
         }),
         json!({
             "name": "list_presets",
-            "description": "List saved processing presets.",
+            "description": "List saved processing presets (names only). Use `get_preset` to fetch options.",
             "inputSchema": {"type": "object", "properties": {}}
+        }),
+        json!({
+            "name": "get_preset",
+            "description": "Fetch a saved preset by name. Returns the wrapped preset (tool, version, options).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Preset name (as returned by list_presets)"}
+                },
+                "required": ["name"]
+            }
         }),
     ]
 }
@@ -116,6 +127,7 @@ pub fn call(params: Option<&Value>) -> Result<Value, ToolError> {
         "video_to_sprite" => video_to_sprite_handler(&args),
         "vectorize" => vectorize_handler(&args),
         "list_presets" => list_presets_handler(),
+        "get_preset" => get_preset_handler(&args),
         other => Err(ToolError::unknown_tool(other)),
     }
 }
@@ -520,14 +532,55 @@ fn vectorize_handler(args: &Value) -> Result<Value, ToolError> {
     ))
 }
 
-// ---------- list_presets ----------
+// ---------- list_presets / get_preset ----------
 
 fn list_presets_handler() -> Result<Value, ToolError> {
-    // Preset system is Phase 6 — return empty list per spec.
+    let names = preset::list().map_err(|e| ToolError::internal(format!("Listing presets: {e}")))?;
+    let dir = preset::presets_dir()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let text = if names.is_empty() {
+        format!("No presets saved in {dir}")
+    } else {
+        format!(
+            "Found {} preset(s) in {dir}:\n  {}",
+            names.len(),
+            names.join("\n  ")
+        )
+    };
     Ok(tool_text_result(
-        "No presets configured. Preset system arrives in Phase 6.",
-        json!({ "presets": [] }),
+        text,
+        json!({
+            "presets": names,
+            "presets_dir": dir,
+        }),
     ))
+}
+
+fn get_preset_handler(args: &Value) -> Result<Value, ToolError> {
+    let name = require_string(args, "name")?;
+    let preset = preset::load(&name).map_err(|e| match e {
+        pixiekit_core::Error::PresetNotFound { .. } => ToolError {
+            code: ERR_INVALID_PARAMS,
+            message: format!("{e}"),
+        },
+        pixiekit_core::Error::InvalidPresetName(_) => ToolError {
+            code: ERR_INVALID_PARAMS,
+            message: format!("{e}"),
+        },
+        other => ToolError::internal(format!("Loading preset: {other}")),
+    })?;
+    let text = format!(
+        "Preset '{}' (tool: {}, version: {})",
+        preset.name, preset.tool, preset.version
+    );
+    let structured = json!({
+        "name": preset.name,
+        "tool": preset.tool,
+        "version": preset.version,
+        "options": preset.options,
+    });
+    Ok(tool_text_result(text, structured))
 }
 
 // ---------- helpers ----------
@@ -563,16 +616,53 @@ fn parse_hex_color(s: &str) -> Result<[u8; 3], String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, MutexGuard, OnceLock};
+
+    /// Serialize tests that mutate `PIXIEKIT_CONFIG_DIR`. Mirrors the pattern
+    /// in `pixiekit_core::preset::tests`.
+    fn env_lock() -> MutexGuard<'static, ()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+    }
+
+    struct ScopedConfigDir {
+        _tmp: tempfile::TempDir,
+        _guard: MutexGuard<'static, ()>,
+    }
+
+    impl ScopedConfigDir {
+        fn new() -> Self {
+            let guard = env_lock();
+            let tmp = tempfile::Builder::new()
+                .prefix("pixiekit-mcp-preset-test-")
+                .tempdir()
+                .unwrap();
+            std::env::set_var("PIXIEKIT_CONFIG_DIR", tmp.path());
+            Self {
+                _tmp: tmp,
+                _guard: guard,
+            }
+        }
+    }
+
+    impl Drop for ScopedConfigDir {
+        fn drop(&mut self) {
+            std::env::remove_var("PIXIEKIT_CONFIG_DIR");
+        }
+    }
 
     #[test]
-    fn list_tools_returns_four_tools() {
+    fn list_tools_returns_five_tools() {
         let tools = list_tools();
-        assert_eq!(tools.len(), 4);
+        assert_eq!(tools.len(), 5);
         let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
         assert!(names.contains(&"bg_remove"));
         assert!(names.contains(&"video_to_sprite"));
         assert!(names.contains(&"vectorize"));
         assert!(names.contains(&"list_presets"));
+        assert!(names.contains(&"get_preset"));
     }
 
     #[test]
@@ -687,7 +777,8 @@ mod tests {
     }
 
     #[test]
-    fn list_presets_returns_empty_list() {
+    fn list_presets_returns_empty_list_for_fresh_config_dir() {
+        let _scope = ScopedConfigDir::new();
         let params = json!({ "name": "list_presets", "arguments": {} });
         let result = call(Some(&params)).unwrap();
         assert!(result["structuredContent"]["presets"].is_array());
@@ -698,6 +789,68 @@ mod tests {
                 .len(),
             0
         );
+    }
+
+    #[test]
+    fn list_presets_returns_saved_names_sorted() {
+        let _scope = ScopedConfigDir::new();
+        preset::save("zeta", preset::TOOL_BG_REMOVE, json!({})).unwrap();
+        preset::save("alpha", preset::TOOL_VECTORIZE, json!({})).unwrap();
+        let params = json!({ "name": "list_presets", "arguments": {} });
+        let result = call(Some(&params)).unwrap();
+        let names = result["structuredContent"]["presets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["alpha", "zeta"]);
+    }
+
+    #[test]
+    fn get_preset_returns_saved_options() {
+        let _scope = ScopedConfigDir::new();
+        let opts = json!({"fuzz": 0.5, "erode": 2});
+        preset::save("clean", preset::TOOL_BG_REMOVE, opts.clone()).unwrap();
+        let params = json!({
+            "name": "get_preset",
+            "arguments": { "name": "clean" }
+        });
+        let result = call(Some(&params)).unwrap();
+        assert_eq!(result["structuredContent"]["name"], "clean");
+        assert_eq!(result["structuredContent"]["tool"], preset::TOOL_BG_REMOVE);
+        assert_eq!(result["structuredContent"]["options"], opts);
+    }
+
+    #[test]
+    fn get_preset_missing_returns_invalid_params() {
+        let _scope = ScopedConfigDir::new();
+        let params = json!({
+            "name": "get_preset",
+            "arguments": { "name": "ghost" }
+        });
+        let err = call(Some(&params)).unwrap_err();
+        assert_eq!(err.code, ERR_INVALID_PARAMS);
+        assert!(err.message.contains("ghost"));
+    }
+
+    #[test]
+    fn get_preset_missing_name_arg_returns_invalid_params() {
+        let _scope = ScopedConfigDir::new();
+        let params = json!({ "name": "get_preset", "arguments": {} });
+        let err = call(Some(&params)).unwrap_err();
+        assert_eq!(err.code, ERR_INVALID_PARAMS);
+    }
+
+    #[test]
+    fn get_preset_invalid_name_returns_invalid_params() {
+        let _scope = ScopedConfigDir::new();
+        let params = json!({
+            "name": "get_preset",
+            "arguments": { "name": "../etc/passwd" }
+        });
+        let err = call(Some(&params)).unwrap_err();
+        assert_eq!(err.code, ERR_INVALID_PARAMS);
     }
 
     #[test]

@@ -142,11 +142,23 @@ export interface ToolMeta {
   href: string
 }
 
-// --- Preset (localStorage) ---
+// --- Preset ---
+//
+// In real mode, presets are stored on the backend as JSON files under
+// `~/.config/pixiekit/presets/<name>.json` (PRD §9.1) and exposed via
+// `/api/presets`. In mock mode, the same shape is mirrored in localStorage so
+// the frontend can run standalone. Preset names are flat across tools — the
+// `tool` field discriminates ownership; collisions across tools overwrite.
 
 export interface Preset<O> {
   name: string
   tool: ToolId
   options: O
-  created_at: number // epoch ms
+  /** Optional: present in mock mode (epoch ms). Real backend doesn't track it. */
+  created_at?: number
+}
+
+export interface PresetSavePayload<O> {
+  tool: ToolId
+  options: O
 }

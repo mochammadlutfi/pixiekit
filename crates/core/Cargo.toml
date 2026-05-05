@@ -17,3 +17,4 @@ tempfile = { workspace = true }
 webp = { workspace = true }
 vtracer = { workspace = true }
 visioncortex = { workspace = true }
+directories = { workspace = true }

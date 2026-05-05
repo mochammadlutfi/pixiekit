@@ -7,7 +7,9 @@ import type {
   BatchResponse,
   BgRemoveOptions,
   HealthResponse,
+  Preset,
   ProgressCallback,
+  ToolId,
   VectorizeOptions,
   VectorizeResponse,
   VideoToSpriteOptions,
@@ -34,6 +36,12 @@ export interface ApiClient {
     options: VideoToSpriteOptions,
     onProgress?: ProgressCallback,
   ): Promise<VideoToSpriteResponse>
+
+  /** List all presets across tools (filter by `tool` field at the call site). */
+  listPresets(): Promise<Preset<unknown>[]>
+  getPreset(name: string): Promise<Preset<unknown> | null>
+  savePreset(name: string, tool: ToolId, options: unknown): Promise<Preset<unknown>>
+  deletePreset(name: string): Promise<void>
 }
 
 class HttpError extends Error {
@@ -62,6 +70,43 @@ async function postJson<TReq, TRes>(
     throw new HttpError(res.status, `${path} → ${res.status}: ${text}`)
   }
   return res.json() as Promise<TRes>
+}
+
+async function putJson<TReq, TRes>(
+  baseUrl: string,
+  path: string,
+  body: TReq,
+): Promise<TRes> {
+  const res = await fetch(buildUrl(baseUrl, path), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText)
+    throw new HttpError(res.status, `${path} → ${res.status}: ${text}`)
+  }
+  return res.json() as Promise<TRes>
+}
+
+interface ListPresetsResponse {
+  presets: Array<{ name: string; tool: string; version: number; options: unknown }>
+  presets_dir: string
+}
+
+interface PresetResponse {
+  name: string
+  tool: string
+  version: number
+  options: unknown
+}
+
+function toFrontendPreset(p: PresetResponse): Preset<unknown> {
+  return {
+    name: p.name,
+    tool: p.tool as ToolId,
+    options: p.options,
+  }
 }
 
 export function createApiClient(baseUrl: string): ApiClient {
@@ -96,6 +141,39 @@ export function createApiClient(baseUrl: string): ApiClient {
         '/api/video-to-sprite',
         { input, output, options },
       )
+    },
+
+    async listPresets() {
+      const res = await fetch(buildUrl(baseUrl, '/api/presets'))
+      if (!res.ok) throw new HttpError(res.status, `listPresets → ${res.status}`)
+      const body = (await res.json()) as ListPresetsResponse
+      return body.presets.map(toFrontendPreset)
+    },
+
+    async getPreset(name) {
+      const res = await fetch(buildUrl(baseUrl, `/api/presets/${encodeURIComponent(name)}`))
+      if (res.status === 404) return null
+      if (!res.ok) throw new HttpError(res.status, `getPreset → ${res.status}`)
+      const body = (await res.json()) as PresetResponse
+      return toFrontendPreset(body)
+    },
+
+    async savePreset(name, tool, options) {
+      const body = await putJson<unknown, PresetResponse>(
+        baseUrl,
+        `/api/presets/${encodeURIComponent(name)}`,
+        { tool, options },
+      )
+      return toFrontendPreset(body)
+    },
+
+    async deletePreset(name) {
+      const res = await fetch(buildUrl(baseUrl, `/api/presets/${encodeURIComponent(name)}`), {
+        method: 'DELETE',
+      })
+      if (!res.ok && res.status !== 404) {
+        throw new HttpError(res.status, `deletePreset → ${res.status}`)
+      }
     },
   }
 }

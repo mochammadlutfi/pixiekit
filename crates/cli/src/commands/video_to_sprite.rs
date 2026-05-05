@@ -6,7 +6,7 @@ use clap::Args as ClapArgs;
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 
-use pixiekit_core::{batch, bg_remove, video_to_sprite};
+use pixiekit_core::{batch, bg_remove, preset, video_to_sprite};
 
 #[derive(ClapArgs, Debug)]
 pub struct Args {
@@ -65,30 +65,40 @@ pub struct Args {
     /// JSON output (for AI / scripting)
     #[arg(long)]
     pub json: bool,
+
+    /// Load tool options from a preset JSON file (overrides individual flags)
+    #[arg(long, value_name = "PATH")]
+    pub config: Option<PathBuf>,
 }
 
 pub fn run(args: Args) -> Result<()> {
-    let format =
-        parse_format(&args.format).with_context(|| format!("Invalid --format: {}", args.format))?;
+    crate::commands::preflight_input(&args.input)?;
 
-    let chroma_key = if args.chroma_key {
-        Some(bg_remove::Options {
-            target_color: parse_hex_color(&args.chroma_target)
-                .with_context(|| format!("Invalid --chroma-target: {}", args.chroma_target))?,
-            fuzz: args.chroma_fuzz,
-            despill: !args.no_despill,
-            erode: args.chroma_erode,
-        })
-    } else {
-        None
-    };
-
-    let opts = video_to_sprite::Options {
-        fps: args.fps,
-        frame_size: args.size,
-        output_format: format,
-        webp_quality: args.webp_quality,
-        chroma_key,
+    let opts = match &args.config {
+        Some(path) => load_options_from_config(path)?,
+        None => {
+            let format = parse_format(&args.format)
+                .with_context(|| format!("Invalid --format: {}", args.format))?;
+            let chroma_key = if args.chroma_key {
+                Some(bg_remove::Options {
+                    target_color: parse_hex_color(&args.chroma_target).with_context(|| {
+                        format!("Invalid --chroma-target: {}", args.chroma_target)
+                    })?,
+                    fuzz: args.chroma_fuzz,
+                    despill: !args.no_despill,
+                    erode: args.chroma_erode,
+                })
+            } else {
+                None
+            };
+            video_to_sprite::Options {
+                fps: args.fps,
+                frame_size: args.size,
+                output_format: format,
+                webp_quality: args.webp_quality,
+                chroma_key,
+            }
+        }
     };
 
     let videos = batch::list_images(&args.input, args.recursive, &["mp4", "mov", "webm"])
@@ -237,6 +247,15 @@ fn process_one(
         }
     }
     Ok(video_to_sprite::process(video_path, output_dir, opts)?)
+}
+
+fn load_options_from_config(path: &Path) -> Result<video_to_sprite::Options> {
+    let preset = preset::load_from_path(path)
+        .with_context(|| format!("Loading preset {}", path.display()))?;
+    preset::ensure_tool(&preset, preset::TOOL_VIDEO_TO_SPRITE)
+        .with_context(|| format!("Preset {} is not a video-to-sprite preset", path.display()))?;
+    serde_json::from_value(preset.options)
+        .with_context(|| format!("Decoding video-to-sprite options from {}", path.display()))
 }
 
 fn parse_format(s: &str) -> Result<video_to_sprite::OutputFormat> {

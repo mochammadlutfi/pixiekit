@@ -1,65 +1,70 @@
-import { useLocalStorage } from '@vueuse/core'
+import { shallowRef, triggerRef } from 'vue'
 import type { Preset, ToolId } from '~/types/pixiekit'
 
-const PRESET_KEY = 'pixiekit:presets:v1'
-
-interface PresetStore {
-  [tool: string]: Preset<unknown>[]
-}
-
 /**
- * Per-tool preset save/load via localStorage.
- * Each tool has its own list of named presets.
+ * Per-tool preset save/load. Uses the active `usePixiekitApi()` client, so
+ * mock mode hits localStorage and real mode hits the `/api/presets` endpoints.
+ *
+ * The composable exposes a synchronous `list()` / `load()` reading a reactive
+ * cache, plus async `save()` / `remove()` that mutate the backing store and
+ * refresh the cache. This preserves the existing component call-sites.
+ *
+ * Defaults seed only in mock mode (and only the first time the cache for this
+ * tool is empty). In real mode the server is the source of truth — empty list
+ * means "no presets yet", not "show defaults".
  */
-export function useToolPreset<O>(tool: ToolId, defaults: { name: string; options: O }[]) {
-  const store = useLocalStorage<PresetStore>(PRESET_KEY, {})
+export function useToolPreset<O>(
+  tool: ToolId,
+  defaults: { name: string; options: O }[],
+) {
+  const api = usePixiekitApi()
+  // shallowRef avoids deep-unwrapping the generic `O` so the Preset<O> shape
+  // round-trips cleanly through TypeScript's ref unwrapping.
+  const cache = shallowRef<Preset<O>[]>([])
 
-  function ensureSeeded() {
-    const list = store.value[tool] ?? []
-    if (list.length === 0) {
-      const seeded: Preset<unknown>[] = defaults.map(d => ({
-        name: d.name,
-        tool,
-        options: d.options as unknown,
-        created_at: Date.now(),
-      }))
-      store.value = { ...store.value, [tool]: seeded }
+  async function refresh() {
+    const all = await api.client.listPresets()
+    const forTool = all.filter(p => p.tool === tool) as Preset<O>[]
+    if (api.mode === 'mock' && forTool.length === 0 && defaults.length > 0) {
+      // Seed defaults locally for first-time mock-mode dev. In real mode we
+      // never auto-write to the server.
+      for (const d of defaults) {
+        await api.client.savePreset(d.name, tool, d.options)
+      }
+      const reseed = await api.client.listPresets()
+      cache.value = reseed.filter(p => p.tool === tool) as Preset<O>[]
+      triggerRef(cache)
+      return
     }
+    cache.value = forTool
+    triggerRef(cache)
   }
-  ensureSeeded()
+
+  // Fire-and-forget initial load. Components can render with an empty list
+  // until refresh resolves, then the reactive cache populates.
+  refresh().catch(err => {
+    console.warn(`[useToolPreset:${tool}] initial refresh failed:`, err)
+  })
 
   function list(): Preset<O>[] {
-    return (store.value[tool] ?? []) as Preset<O>[]
-  }
-
-  function save(name: string, options: O): void {
-    const trimmed = name.trim()
-    if (trimmed.length === 0) return
-    const current = (store.value[tool] ?? []) as Preset<O>[]
-    const without = current.filter(p => p.name !== trimmed)
-    const next: Preset<O> = {
-      name: trimmed,
-      tool,
-      options,
-      created_at: Date.now(),
-    }
-    store.value = {
-      ...store.value,
-      [tool]: [...without, next] as unknown as Preset<unknown>[],
-    }
+    return cache.value
   }
 
   function load(name: string): Preset<O> | undefined {
-    return list().find(p => p.name === name)
+    return cache.value.find(p => p.name === name)
   }
 
-  function remove(name: string): void {
-    const current = (store.value[tool] ?? []) as Preset<O>[]
-    store.value = {
-      ...store.value,
-      [tool]: current.filter(p => p.name !== name) as unknown as Preset<unknown>[],
-    }
+  async function save(name: string, options: O): Promise<void> {
+    const trimmed = name.trim()
+    if (trimmed.length === 0) return
+    await api.client.savePreset(trimmed, tool, options)
+    await refresh()
   }
 
-  return { list, save, load, remove }
+  async function remove(name: string): Promise<void> {
+    await api.client.deletePreset(name)
+    await refresh()
+  }
+
+  return { list, save, load, remove, refresh }
 }

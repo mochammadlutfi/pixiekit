@@ -20,3 +20,6 @@ rayon = { workspace = true }
 image = { workspace = true }
 webp = { workspace = true }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-std", "io-util"] }
+
+[dev-dependencies]
+tempfile = { workspace = true }

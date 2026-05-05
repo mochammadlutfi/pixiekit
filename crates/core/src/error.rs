@@ -44,4 +44,16 @@ pub enum Error {
 
     #[error("vtracer failed: {0}")]
     VtracerFailed(String),
+
+    #[error("Could not locate user config directory: {0}")]
+    ConfigDir(String),
+
+    #[error("Preset name '{0}' is invalid (use letters, digits, dash, underscore; 1-64 chars)")]
+    InvalidPresetName(String),
+
+    #[error("Preset '{name}' not found at {path}")]
+    PresetNotFound { name: String, path: PathBuf },
+
+    #[error("Preset tool mismatch: expected '{expected}', got '{got}'")]
+    PresetToolMismatch { expected: String, got: String },
 }
