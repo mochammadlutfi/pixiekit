@@ -44,7 +44,7 @@ impl ApiMode {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct ApiOptions {
     #[serde(default)]
     pub mode: ApiMode,
@@ -58,22 +58,6 @@ pub struct ApiOptions {
     pub length_threshold: Option<f64>,
     pub splice_threshold: Option<u8>,
     pub path_precision: Option<u8>,
-}
-
-impl Default for ApiOptions {
-    fn default() -> Self {
-        Self {
-            mode: ApiMode::default(),
-            smooth: None,
-            filter_speckle: None,
-            color_precision: None,
-            layer_difference: None,
-            corner_threshold: None,
-            length_threshold: None,
-            splice_threshold: None,
-            path_precision: None,
-        }
-    }
 }
 
 impl ApiOptions {
