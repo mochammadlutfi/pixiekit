@@ -69,6 +69,24 @@ curl http://localhost:8765/api/health
 Configurable env: `HOST`, `PORT`, `CORS_ALLOWED_ORIGINS` (comma-separated),
 `RUST_LOG`. Body limit is 100 MiB so videos fit.
 
+## Web frontend (Phase 5b)
+
+A Nuxt 4 dashboard wraps the three tools for non-CLI users. By default it
+runs against a mock backend so you can iterate on the UI without the Rust
+backend running.
+
+```bash
+cd apps/web
+pnpm install
+pnpm dev
+# → http://localhost:3000
+
+# To target the real Phase 5a axum backend:
+VITE_PIXIEKIT_API_URL=http://localhost:8765 pnpm dev
+```
+
+See [`apps/web/README.md`](apps/web/README.md) for layout and conventions.
+
 ## Roadmap
 
 | Phase | Scope | Status |
@@ -78,7 +96,7 @@ Configurable env: `HOST`, `PORT`, `CORS_ALLOWED_ORIGINS` (comma-separated),
 | 3 | `core::vectorize` + CLI | ✅ |
 | 4 | MCP server (stdio) | ✅ |
 | 5a | SaaS backend — axum REST API | ✅ |
-| 5b | SaaS frontend — Nuxt 4 dashboard | ⏳ |
+| 5b | SaaS frontend — Nuxt 4 dashboard | ✅ |
 | 6 | (Optional) Tauri desktop bundle | ⏳ |
 
 ## License
