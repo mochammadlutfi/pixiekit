@@ -110,13 +110,23 @@ Phase 1; automated diff in Phase 6).
 | 4 | MCP server (stdio) | ✅ done | `main` |
 | 5a | SaaS axum backend | ✅ done | `main` |
 | 5b | SaaS Nuxt 4 frontend | ✅ done | `main` |
-| 6 | Polish — preset CLI + humanized errors | 🚧 in progress | `claude/continue-latest-phase-bjaMH` |
+| 6 | Polish — presets across CLI/MCP/web + humanized errors | ✅ done | `main` |
 | 7 | (Optional) Tauri desktop | ⏳ deferred | — |
 
-Phase 6 scope (current branch) — preset save/load via `pixiekit-cli preset
-{save,list,show,delete,path}` (PRD §7.1.5) plus `--config <PATH>` on each tool
-to load a preset's options (PRD §7.1.1). Presets persist as JSON under
-`~/.config/pixiekit/presets/` (override with `PIXIEKIT_CONFIG_DIR`).
+Phase 6 ships preset save/load uniformly across surfaces, all backed by
+`pixiekit_core::preset` (JSON under `~/.config/pixiekit/presets/`, override
+with `PIXIEKIT_CONFIG_DIR`):
+
+- **CLI** — `pixiekit-cli preset {save,list,show,delete,path}` (PRD §7.1.5)
+  plus `--config <PATH>` on each tool to load a preset's options (PRD §7.1.1).
+- **MCP** — `list_presets` (real) + `get_preset` tools (PRD §7.3.2).
+- **Web API** — `/api/presets` CRUD (GET list / GET :name / PUT :name /
+  DELETE :name).
+- **Nuxt frontend** — `useToolPreset` writes through `usePixiekitApi()`, so
+  presets sync with the backend in real mode and mirror in localStorage in
+  mock mode.
+
+M6.4 humanizes per-tool input preflight errors with single-line hints.
 
 When starting a new phase, create a feature branch:
 `git checkout -b feat/phase-N-{tool}`. Merge to `main` via PR (or fast-forward
