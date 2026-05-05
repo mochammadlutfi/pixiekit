@@ -41,7 +41,7 @@ cargo build --release --workspace
 |-------|-------|:------:|
 | 1 | Workspace + `core::bg_remove` + CLI | ✅ |
 | 2 | `core::video_to_sprite` + CLI | ✅ |
-| 3 | `core::vectorize` + CLI | ⏳ |
+| 3 | `core::vectorize` + CLI | ✅ |
 | 4 | MCP server (stdio) | ⏳ |
 | 5 | SaaS — Nuxt 4 frontend + axum backend | ⏳ |
 | 6 | (Optional) Tauri desktop bundle | ⏳ |
