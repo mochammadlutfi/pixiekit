@@ -20,11 +20,15 @@ struct Cli {
 enum Commands {
     /// Remove background (chroma key + despill + erode)
     BgRemove(commands::bg_remove::Args),
+
+    /// Extract video frames into a horizontal sprite sheet
+    VideoToSprite(commands::video_to_sprite::Args),
 }
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Commands::BgRemove(args) => commands::bg_remove::run(args),
+        Commands::VideoToSprite(args) => commands::video_to_sprite::run(args),
     }
 }

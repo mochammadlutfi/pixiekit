@@ -11,4 +11,7 @@ description = "Core library for Pixiekit asset preparation toolkit"
 image = { workspace = true }
 walkdir = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
+tempfile = { workspace = true }
+webp = { workspace = true }

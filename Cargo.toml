@@ -22,6 +22,8 @@ walkdir = "2.5"
 rayon = "1.10"
 clap = { version = "4.5", features = ["derive"] }
 indicatif = "0.17"
+tempfile = "3.10"
+webp = "0.3"
 
 # Release profile — small binary, fast runtime
 [profile.release]
