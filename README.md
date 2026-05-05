@@ -10,7 +10,7 @@ Local asset preparation toolkit (Rust) untuk game / animation pipeline.
 Triple-access:
 - **CLI** (`pixiekit-cli`) — untuk scripting + AI agent (Claude Code subprocess)
 - **MCP server** (`pixiekit-mcp`) — native Claude Code integration via stdio
-- **Web SaaS** (planned, Phase 5) — Nuxt 4 frontend + axum backend
+- **Web SaaS** — Nuxt 4 frontend + axum backend (`pixiekit-web-api`, Phase 5a ✅)
 
 ## Status
 
@@ -35,6 +35,24 @@ cargo build --release --workspace
   --input ./videos --output ./sprites --fps 8 --size 256 --chroma-key
 ```
 
+## Web backend (Phase 5a)
+
+REST API server (`pixiekit-web-api`) wraps the core tools for the SaaS
+frontend. See [`docs/API.md`](docs/API.md) for the full contract.
+
+```bash
+PORT=8765 cargo run --release --bin pixiekit-web-api
+# → listening on 0.0.0.0:8765
+
+# Smoke test
+curl http://localhost:8765/api/health
+# {"status":"ok","version":"0.1.0"}
+```
+
+Configurable env: `HOST`, `PORT`, `CORS_ALLOWED_ORIGINS` (comma-separated),
+`RUST_LOG`. Body limit is 100 MiB so videos fit. The vectorize endpoint is
+a 501 stub until Phase 3 (`core::vectorize`) merges to `main`.
+
 ## Roadmap
 
 | Phase | Scope | Status |
@@ -43,7 +61,8 @@ cargo build --release --workspace
 | 2 | `core::video_to_sprite` + CLI | ✅ |
 | 3 | `core::vectorize` + CLI | ⏳ |
 | 4 | MCP server (stdio) | ⏳ |
-| 5 | SaaS — Nuxt 4 frontend + axum backend | ⏳ |
+| 5a | SaaS backend — axum REST API | ✅ |
+| 5b | SaaS frontend — Nuxt 4 dashboard | ⏳ |
 | 6 | (Optional) Tauri desktop bundle | ⏳ |
 
 ## License
