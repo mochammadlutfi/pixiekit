@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{anyhow, Context, Result};
 use clap::{Args as ClapArgs, Subcommand};
 
-use pixiekit_core::{bg_remove, preset, vectorize, video_to_sprite};
+use pixiekit_core::{audio, bg_remove, preset, vectorize, video_to_sprite};
 
 #[derive(ClapArgs, Debug)]
 pub struct Args {
@@ -57,6 +57,8 @@ pub enum SaveTool {
     Vectorize(SaveVectorizeArgs),
     /// Save video-to-sprite options
     VideoToSprite(SaveVideoToSpriteArgs),
+    /// Save audio options
+    Audio(SaveAudioArgs),
 }
 
 #[derive(ClapArgs, Debug)]
@@ -127,6 +129,29 @@ pub struct SaveVideoToSpriteArgs {
 }
 
 #[derive(ClapArgs, Debug)]
+pub struct SaveAudioArgs {
+    #[arg(long)]
+    pub from: Option<PathBuf>,
+
+    #[arg(long, default_value = "ogg")]
+    pub target_format: String,
+    #[arg(long, default_value_t = -16.0)]
+    pub target_lufs: f32,
+    #[arg(long)]
+    pub no_normalize: bool,
+    #[arg(long)]
+    pub no_trim_silence: bool,
+    #[arg(long, default_value_t = -50.0)]
+    pub silence_threshold_db: f32,
+    #[arg(long, default_value_t = 44_100)]
+    pub sample_rate: u32,
+    #[arg(long, default_value = "keep")]
+    pub channels: String,
+    #[arg(long, default_value_t = 128)]
+    pub bitrate_kbps: u16,
+}
+
+#[derive(ClapArgs, Debug)]
 pub struct ListArgs {
     /// JSON output (for AI / scripting)
     #[arg(long)]
@@ -166,6 +191,7 @@ fn run_save(args: SaveArgs) -> Result<()> {
             preset::TOOL_VIDEO_TO_SPRITE,
             build_video_to_sprite_options(a)?,
         ),
+        SaveTool::Audio(a) => (preset::TOOL_AUDIO, build_audio_options(a)?),
     };
 
     let path = preset::save(&args.name, tool, options).context("Saving preset")?;
@@ -206,6 +232,7 @@ fn build_vectorize_options(a: SaveVectorizeArgs) -> Result<serde_json::Value> {
         length_threshold,
         splice_threshold,
         path_precision: a.path_precision,
+        posterize: None,
     };
     Ok(serde_json::to_value(opts)?)
 }
@@ -232,6 +259,27 @@ fn build_video_to_sprite_options(a: SaveVideoToSpriteArgs) -> Result<serde_json:
         output_format: format,
         webp_quality: a.webp_quality,
         chroma_key,
+    };
+    Ok(serde_json::to_value(opts)?)
+}
+
+fn build_audio_options(a: SaveAudioArgs) -> Result<serde_json::Value> {
+    if let Some(from) = a.from {
+        return read_options_json::<audio::Options>(&from);
+    }
+    let target_format = crate::commands::audio::parse_target_format(&a.target_format)
+        .with_context(|| format!("Invalid --target-format: {}", a.target_format))?;
+    let channels = crate::commands::audio::parse_channels(&a.channels)
+        .with_context(|| format!("Invalid --channels: {}", a.channels))?;
+    let opts = audio::Options {
+        target_format,
+        target_lufs: a.target_lufs,
+        normalize: !a.no_normalize,
+        trim_silence: !a.no_trim_silence,
+        silence_threshold_db: a.silence_threshold_db,
+        sample_rate: a.sample_rate,
+        channels,
+        bitrate_kbps: a.bitrate_kbps,
     };
     Ok(serde_json::to_value(opts)?)
 }

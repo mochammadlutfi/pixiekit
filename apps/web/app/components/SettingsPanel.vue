@@ -1,22 +1,43 @@
 <script setup lang="ts">
-import { Settings2 } from 'lucide-vue-next'
-
 interface Props {
   title?: string
+  subtitle?: string
+  /** Render without internal padding for full-bleed content (e.g. file lists) */
+  flush?: boolean
 }
 
 withDefaults(defineProps<Props>(), {
-  title: 'Settings',
+  flush: false,
 })
 </script>
 
 <template>
-  <section class="rounded-lg border bg-card">
-    <header class="flex items-center gap-2 border-b px-4 py-3">
-      <Settings2 class="size-4 text-muted-foreground" />
-      <h2 class="text-sm font-semibold">{{ title }}</h2>
+  <section
+    class="surface group overflow-hidden rounded-xl border border-border/70 transition-shadow hover:shadow-sm"
+  >
+    <header
+      v-if="title || $slots.actions"
+      class="flex items-start justify-between gap-3 border-b border-border/60 px-4 py-3 sm:px-5"
+    >
+      <div class="min-w-0">
+        <h2
+          v-if="title"
+          class="text-sm font-semibold tracking-tight"
+        >
+          {{ title }}
+        </h2>
+        <p
+          v-if="subtitle"
+          class="mt-0.5 text-xs text-muted-foreground"
+        >
+          {{ subtitle }}
+        </p>
+      </div>
+      <div v-if="$slots.actions" class="flex shrink-0 items-center gap-2">
+        <slot name="actions" />
+      </div>
     </header>
-    <div class="space-y-4 p-4">
+    <div :class="flush ? '' : 'space-y-4 p-4 sm:p-5'">
       <slot />
     </div>
   </section>

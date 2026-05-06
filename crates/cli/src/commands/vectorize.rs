@@ -6,7 +6,7 @@ use clap::Args as ClapArgs;
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 
-use pixiekit_core::{batch, preset, vectorize};
+use pixiekit_core::{batch, posterize, preset, vectorize};
 
 #[derive(ClapArgs, Debug)]
 pub struct Args {
@@ -55,6 +55,21 @@ pub struct Args {
     #[arg(long, default_value_t = 8)]
     pub path_precision: u8,
 
+    /// Posterize input to N colors (median-cut) before tracing. Power of two,
+    /// 2-256. Typical: 8 for clean cartoons, 16 for richer illustration.
+    /// Recommended for AI-generated input (Nano Banana, MidJourney) — produces
+    /// dramatically cleaner SVG by removing anti-alias noise. Disabled by
+    /// default.
+    #[arg(long)]
+    pub posterize: Option<u16>,
+
+    /// "Clean" preset — pre-posterize to 8 colors + aggressive vtracer
+    /// thresholds. Closer in spirit to AI vectorizers (Recraft / Vectorizer.ai)
+    /// for cartoon input. Overrides individual flags. Still 100% deterministic
+    /// vtracer underneath.
+    #[arg(long)]
+    pub clean: bool,
+
     /// Recursive folder scan
     #[arg(short, long)]
     pub recursive: bool,
@@ -81,6 +96,7 @@ pub fn run(args: Args) -> Result<()> {
 
     let opts = match &args.config {
         Some(path) => load_options_from_config(path)?,
+        None if args.clean => vectorize::Options::clean(),
         None => {
             let mode = parse_mode(&args.mode).with_context(|| {
                 format!("Invalid --mode: {} (expected color|binary)", args.mode)
@@ -104,6 +120,7 @@ pub fn run(args: Args) -> Result<()> {
                 length_threshold,
                 splice_threshold,
                 path_precision: args.path_precision,
+                posterize: args.posterize.map(|n| posterize::Options { n_colors: n }),
             }
         }
     };

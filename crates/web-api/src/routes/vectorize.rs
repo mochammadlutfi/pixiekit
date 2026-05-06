@@ -15,7 +15,7 @@ use axum::routing::post;
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 
-use pixiekit_core::{batch, vectorize};
+use pixiekit_core::{batch, posterize, vectorize};
 
 use crate::error::{AppError, AppResult};
 use crate::upload::collect_multipart;
@@ -58,10 +58,22 @@ pub struct ApiOptions {
     pub length_threshold: Option<f64>,
     pub splice_threshold: Option<u8>,
     pub path_precision: Option<u8>,
+    /// Posterize input to N colors (median-cut) before tracing. Power of two,
+    /// 2-256. Recommended for AI-generated input — produces dramatically
+    /// cleaner SVG by removing anti-alias noise.
+    pub posterize: Option<u16>,
+    /// "Clean" preset shortcut. When `true`, overrides all other fields with
+    /// `vectorize::Options::clean()` (8-color posterize + aggressive
+    /// thresholds).
+    #[serde(default)]
+    pub clean: bool,
 }
 
 impl ApiOptions {
     fn core(&self) -> vectorize::Options {
+        if self.clean {
+            return vectorize::Options::clean();
+        }
         let defaults = vectorize::Options::default();
         let (corner, length, splice) = match self.smooth {
             Some(s) => vectorize::smooth_to_params(s),
@@ -80,6 +92,7 @@ impl ApiOptions {
             length_threshold: self.length_threshold.unwrap_or(length),
             splice_threshold: self.splice_threshold.unwrap_or(splice),
             path_precision: self.path_precision.unwrap_or(defaults.path_precision),
+            posterize: self.posterize.map(|n| posterize::Options { n_colors: n }),
         }
     }
 }

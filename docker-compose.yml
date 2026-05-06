@@ -1,0 +1,85 @@
+# Pixiekit — local Docker orchestration
+#
+# Usage:
+#   docker compose up --build           # web-api + web
+#   docker compose up --build web-api   # API only
+#   docker compose run --rm cli --help  # ad-hoc CLI invocation
+#
+# Override env via .env file in repo root (see .env.docker.example).
+
+name: pixiekit
+
+services:
+  web-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: web-api
+    image: pixiekit/web-api:latest
+    container_name: pixiekit-web-api
+    restart: unless-stopped
+    ports:
+      - "${WEB_API_PORT:-8765}:8765"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8765
+      RUST_LOG: ${RUST_LOG:-info}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:${WEB_PORT:-3000}}
+    volumes:
+      - pixiekit-data:/app/data
+    networks:
+      - pixiekit
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    image: pixiekit/web:latest
+    container_name: pixiekit-web
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    environment:
+      NUXT_PUBLIC_PIXIEKIT_API_URL: ${NUXT_PUBLIC_PIXIEKIT_API_URL:-http://localhost:8765}
+    depends_on:
+      web-api:
+        condition: service_started
+    networks:
+      - pixiekit
+
+  # On-demand CLI runner (not started by `up`).
+  # Mount a host folder and run conversions inside the container.
+  cli:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: cli
+    image: pixiekit/cli:latest
+    profiles: ["tools"]
+    volumes:
+      - ./test:/work
+    working_dir: /work
+    networks:
+      - pixiekit
+
+  # On-demand MCP server (stdio). Use with an MCP-aware client.
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: mcp
+    image: pixiekit/mcp:latest
+    profiles: ["tools"]
+    stdin_open: true
+    tty: false
+    networks:
+      - pixiekit
+
+volumes:
+  pixiekit-data:
+    name: pixiekit-data
+
+networks:
+  pixiekit:
+    name: pixiekit
+    driver: bridge

@@ -8,13 +8,33 @@
 
 import type { ApiClient } from '~/lib/api-client'
 import type {
+  AtlasPackOptions,
+  AtlasPackResponse,
+  AudioOptions,
+  AudioResponse,
   BatchResponse,
   BgRemoveOptions,
   HealthResponse,
+  OptimizeOptions,
+  OptimizedFile,
+  OptimizeResponse,
+  NineSliceOptions,
+  NineSliceResponse,
+  AnimPreviewOptions,
+  AnimPreviewResponse,
   Preset,
   ProcessedFile,
   ProgressCallback,
+  ScaleOptions,
+  ScaledFile,
+  ScaleResponse,
+  SvgOptimizeFile,
+  SvgOptimizeOptions,
+  SvgOptimizeResponse,
   ToolId,
+  TrimPadFile,
+  TrimPadOptions,
+  TrimPadResponse,
   VectorizeOptions,
   VectorizeResponse,
   VideoToSpriteOptions,
@@ -121,6 +141,48 @@ export function createMockApiClient(): ApiClient {
       }
     },
 
+    async processBgRemoveUpload(
+      file: File,
+      _options: BgRemoveOptions,
+    ): Promise<Blob> {
+      // Mock: pretend to process by echoing the input bytes after a small delay.
+      await sleep(STEP_MS * 2)
+      return file.slice(0, file.size, file.type || 'image/png')
+    },
+
+    async processVectorizeUpload(
+      file: File,
+      _options: VectorizeOptions,
+    ): Promise<Blob> {
+      await sleep(STEP_MS * 3)
+      // Mock: emit a tiny SVG indicating mock mode + filename.
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <rect width="256" height="256" fill="#FFB88C"/>
+  <text x="50%" y="48%" font-family="ui-sans-serif" font-size="14" fill="#3D3D3D" text-anchor="middle" dominant-baseline="middle">${file.name}</text>
+  <text x="50%" y="58%" font-family="ui-sans-serif" font-size="11" fill="#3D3D3D" text-anchor="middle" dominant-baseline="middle" opacity="0.7">mock svg</text>
+</svg>`
+      return new Blob([svg], { type: 'image/svg+xml' })
+    },
+
+    async processVideoToSpriteUpload(
+      file: File,
+      options: VideoToSpriteOptions,
+    ) {
+      // Pretend to extract & stitch frames. Echo a placeholder image.
+      await sleep(STEP_MS * 6)
+      const totalFrames = 32
+      const sprite = `<svg xmlns="http://www.w3.org/2000/svg" width="${options.frame_size * 4}" height="${options.frame_size}" viewBox="0 0 ${options.frame_size * 4} ${options.frame_size}">
+  <rect width="100%" height="100%" fill="#A8D8EA"/>
+  <text x="50%" y="50%" font-family="ui-sans-serif" font-size="20" fill="#3D3D3D" text-anchor="middle" dominant-baseline="middle">${totalFrames} frames @ ${options.fps}fps · ${file.name}</text>
+</svg>`
+      return {
+        blob: new Blob([sprite], { type: 'image/svg+xml' }),
+        frameCount: totalFrames,
+        fps: options.fps,
+        frameSize: options.frame_size,
+      }
+    },
+
     async processVectorize(
       input: string,
       output: string,
@@ -176,6 +238,199 @@ export function createMockApiClient(): ApiClient {
       writePresetStore(readPresetStore().filter(p => p.name !== name))
     },
 
+    async processAtlasPack(
+      _input: string,
+      output: string,
+      options: AtlasPackOptions,
+    ): Promise<AtlasPackResponse> {
+      const start = Date.now()
+      await sleep(STEP_MS * 4)
+      const ext = options.format === 'webp' ? 'webp' : 'png'
+      const name = options.name || 'atlas'
+      return {
+        atlas_path: `${output}/${name}.${ext}`,
+        metadata_path: `${output}/${name}.json`,
+        packed: 8,
+        total: 8,
+        atlas_size: { w: 512, h: 512 },
+        efficiency: 0.82,
+        duration_ms: Date.now() - start,
+      }
+    },
+
+    async processOptimize(
+      input: string,
+      output: string,
+      options: OptimizeOptions,
+      onProgress?: ProgressCallback,
+    ): Promise<OptimizeResponse> {
+      const start = Date.now()
+      const ext = options.target_format === 'png' ? 'png' : 'webp'
+      const files: OptimizedFile[] = []
+      for (let i = 0; i < MOCK_FILES.length; i++) {
+        await sleep(STEP_MS / 2)
+        const original = MOCK_FILES[i]!
+        const stem = original.replace(/\.png$/, '')
+        const inputSize = 200_000 + i * 5000
+        const outputSize = Math.round(inputSize * (options.lossless ? 0.65 : 0.4))
+        files.push({
+          input_path: `${input}/${original}`,
+          output_path: `${output}/${stem}.${ext}`,
+          duration_ms: STEP_MS / 2,
+          ok: true,
+          input_size: inputSize,
+          output_size: outputSize,
+          ratio: outputSize / inputSize,
+        })
+        onProgress?.({
+          index: i + 1,
+          total: MOCK_FILES.length,
+          current_file: original,
+          duration_ms: STEP_MS / 2,
+        })
+      }
+      return {
+        processed: files.length,
+        failed: 0,
+        duration_ms: Date.now() - start,
+        files,
+      }
+    },
+
+    async processScale(
+      input: string,
+      output: string,
+      options: ScaleOptions,
+      onProgress?: ProgressCallback,
+    ): Promise<ScaleResponse> {
+      const start = Date.now()
+      const files: ScaledFile[] = []
+      for (let i = 0; i < MOCK_FILES.length; i++) {
+        await sleep(STEP_MS / 2)
+        const original = MOCK_FILES[i]!
+        const stem = original.replace(/\.png$/, '')
+        const variants = options.target_scales.map(s => {
+          const label = `${s}`
+          if (options.naming === 'flutter') {
+            return `${output}/${label}x/${original}`
+          }
+          if (options.naming === 'nested') {
+            return `${output}/${label}/${original}`
+          }
+          return s === 1.0
+            ? `${output}/${original}`
+            : `${output}/${stem}@${label}x.png`
+        })
+        files.push({
+          input: `${input}/${original}`,
+          variants,
+          status: 'ok',
+        })
+        onProgress?.({
+          index: i + 1,
+          total: MOCK_FILES.length,
+          current_file: original,
+          duration_ms: STEP_MS / 2,
+        })
+      }
+      return {
+        processed: files.length,
+        failed: 0,
+        duration_ms: Date.now() - start,
+        files,
+      }
+    },
+
+    async processAudio(
+      input: string,
+      output: string,
+      options: AudioOptions,
+      onProgress?: ProgressCallback,
+    ): Promise<AudioResponse> {
+      const mockAudioFiles = ['ambient.wav', 'sfx_jump.wav', 'voice_intro.mp3']
+      const start = Date.now()
+      const files: ProcessedFile[] = []
+      for (let i = 0; i < mockAudioFiles.length; i++) {
+        await sleep(STEP_MS)
+        const f = mockAudioFiles[i]!
+        const stem = f.replace(/\.[^.]+$/, '')
+        files.push({
+          input_path: `${input}/${f}`,
+          output_path: `${output}/${stem}.${options.target_format}`,
+          duration_ms: STEP_MS,
+          ok: true,
+        })
+        onProgress?.({
+          index: i + 1,
+          total: mockAudioFiles.length,
+          current_file: f,
+          duration_ms: STEP_MS,
+        })
+      }
+      return {
+        processed: files.length,
+        failed: 0,
+        duration_ms: Date.now() - start,
+        files,
+        duration_ms_in: 4200,
+        duration_ms_out: options.trim_silence ? 3650 : 4200,
+        integrated_lufs: options.normalize ? options.target_lufs : null,
+      }
+    },
+
+    async processTrimPad(
+      input: string,
+      output: string,
+      _options: TrimPadOptions,
+      onProgress?: ProgressCallback,
+    ): Promise<TrimPadResponse> {
+      const { processedFiles, durationMs } = await simulateBatch(
+        MOCK_FILES,
+        onProgress,
+        input,
+        output,
+      )
+      const files: TrimPadFile[] = processedFiles.map((f, i) => ({
+        ...f,
+        output_size: [200 + i * 4, 200 + i * 4],
+        bbox: [10, 10, 200 + i * 4, 200 + i * 4],
+      }))
+      return {
+        processed: files.length,
+        failed: 0,
+        duration_ms: durationMs,
+        files,
+      }
+    },
+
+    async processSvgOptimize(
+      input: string,
+      output: string,
+      _options: SvgOptimizeOptions,
+      onProgress?: ProgressCallback,
+    ): Promise<SvgOptimizeResponse> {
+      const svgFiles = MOCK_FILES.slice(0, 4).map(f => f.replace(/\.png$/, '.svg'))
+      const { processedFiles, durationMs } = await simulateBatch(
+        svgFiles,
+        onProgress,
+        input,
+        output,
+      )
+      const files: SvgOptimizeFile[] = processedFiles.map((f, i) => ({
+        ...f,
+        input_size: 4096 + i * 512,
+        output_size: 1024 + i * 128,
+        ratio: 0.25,
+      }))
+      return {
+        processed: files.length,
+        failed: 0,
+        duration_ms: durationMs,
+        files,
+        svg_data_uri: dataUriPlaceholder('Minified SVG', '#C5E1A5'),
+      }
+    },
+
     async processVideoToSprite(
       input: string,
       output: string,
@@ -215,6 +470,86 @@ export function createMockApiClient(): ApiClient {
           '#A8D8EA',
         ),
       }
+    },
+
+    async processNineSlice(
+      input: string,
+      output: string,
+      _options: NineSliceOptions,
+      onProgress?: ProgressCallback,
+    ): Promise<NineSliceResponse> {
+      const { processedFiles, durationMs } = await simulateBatch(
+        MOCK_FILES.slice(0, 3),
+        onProgress,
+        input,
+        output,
+      )
+      return {
+        processed: processedFiles.length,
+        failed: 0,
+        duration_ms: durationMs,
+        files: processedFiles.map(f => ({
+          ...f,
+          outputs: [`${f.output_path}_top.png`, `${f.output_path}_center.png`],
+        })),
+      }
+    },
+
+    async processNineSliceUpload(
+      file: File,
+      options: NineSliceOptions,
+    ): Promise<Blob> {
+      await sleep(STEP_MS * 2)
+      if (options.mode === 'metadata') {
+        const metadata = {
+          image: file.name,
+          size: { w: 100, h: 100 },
+          slices: {
+            top: options.top,
+            right: options.right,
+            bottom: options.bottom,
+            left: options.left,
+          },
+        }
+        return new Blob([JSON.stringify(metadata, null, 2)], {
+          type: 'application/json',
+        })
+      }
+      // For split modes, mock a zip (actually just the file for now)
+      return file.slice(0, file.size, 'application/zip')
+    },
+
+    async processAnimPreview(
+      input: string,
+      output: string,
+      options: AnimPreviewOptions,
+      onProgress?: ProgressCallback,
+    ): Promise<AnimPreviewResponse> {
+      const { processedFiles, durationMs } = await simulateBatch(
+        ['animation'],
+        onProgress,
+        input,
+        output,
+      )
+      return {
+        processed: processedFiles.length,
+        failed: 0,
+        duration_ms: durationMs,
+        files: processedFiles.map(f => ({
+          ...f,
+          output: `${output}/animation.${options.format}`,
+        })),
+      }
+    },
+
+    async processAnimPreviewUpload(
+      file: File,
+      options: AnimPreviewOptions,
+    ): Promise<Blob> {
+      await sleep(STEP_MS * 4)
+      const mime = options.format === 'gif' ? 'image/gif' : `video/${options.format}`
+      // Mock: we can't easily generate a video, so we just return a placeholder blob with the right mime
+      return file.slice(0, file.size, mime)
     },
   }
 }

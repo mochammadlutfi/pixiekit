@@ -20,6 +20,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
+use crate::posterize;
 
 /// Color mode for vectorization output.
 ///
@@ -55,6 +56,13 @@ pub struct Options {
     pub splice_threshold: u8,
     /// Decimal places for SVG path coordinates. 0 - 16.
     pub path_precision: u8,
+    /// Optional posterize pre-pass. When `Some`, the input image is reduced to
+    /// `n_colors` via median-cut quantization before vtracer runs. Produces
+    /// dramatically cleaner SVGs for cartoon / illustration input by removing
+    /// anti-alias noise that vtracer would otherwise trace as extra paths.
+    /// Path: input → posterize → vtracer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub posterize: Option<posterize::Options>,
 }
 
 impl Default for Options {
@@ -68,6 +76,27 @@ impl Default for Options {
             length_threshold: 4.0,
             splice_threshold: 45,
             path_precision: 8,
+            posterize: None,
+        }
+    }
+}
+
+impl Options {
+    /// "Clean" preset — pre-posterizes to 8 colors and uses aggressive
+    /// speckle/corner thresholds. Closer in spirit to AI vectorizers (Recraft /
+    /// Vectorizer.ai) for cartoon and illustration input. Still 100%
+    /// deterministic vtracer underneath — no AI involved.
+    pub fn clean() -> Self {
+        Self {
+            mode: Mode::Color,
+            filter_speckle: 32,
+            color_precision: 4,
+            layer_difference: 24,
+            corner_threshold: 80,
+            length_threshold: 6.0,
+            splice_threshold: 60,
+            path_precision: 4,
+            posterize: Some(posterize::Options { n_colors: 8 }),
         }
     }
 }
@@ -151,6 +180,21 @@ pub fn process(input_path: &Path, output_path: &Path, opts: &Options) -> Result<
         splice_threshold: opts.splice_threshold.clamp(0, 180) as i32,
         path_precision: Some(opts.path_precision.clamp(0, 16) as u32),
     };
+
+    // If posterize is requested, decode → quantize → write a temporary PNG
+    // and feed that to vtracer. Tempfile is dropped (deleted) when this
+    // function returns.
+    if let Some(post_opts) = &opts.posterize {
+        let img = image::open(input_path)?.to_rgba8();
+        let quantized = posterize::process(&img, post_opts)?;
+        let tmp = tempfile::Builder::new()
+            .prefix("pixiekit-posterize-")
+            .suffix(".png")
+            .tempfile()?;
+        quantized.save(tmp.path())?;
+        return vtracer::convert_image_to_svg(tmp.path(), output_path, config)
+            .map_err(Error::VtracerFailed);
+    }
 
     vtracer::convert_image_to_svg(input_path, output_path, config).map_err(Error::VtracerFailed)
 }

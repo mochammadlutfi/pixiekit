@@ -10,7 +10,10 @@ use std::time::Instant;
 use rayon::prelude::*;
 use serde_json::{json, Value};
 
-use pixiekit_core::{batch, bg_remove, preset, vectorize, video_to_sprite};
+use pixiekit_core::{
+    atlas_pack, audio, batch, bg_remove, optimize, preset, scale, svg_optimize, trim_pad,
+    vectorize, video_to_sprite, nine_slice, anim_preview,
+};
 
 use crate::server::{ERR_INTERNAL, ERR_INVALID_PARAMS, ERR_METHOD_NOT_FOUND};
 
@@ -95,6 +98,116 @@ pub fn list_tools() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "atlas_pack",
+            "description": "Pack a folder of PNG sprites into a texture atlas with Flame-compatible JSON metadata. Reduces draw calls in game runtime.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "input": {"type": "string", "description": "Folder of PNG sprites"},
+                    "output": {"type": "string", "description": "Output folder for atlas + JSON"},
+                    "name": {"type": "string", "default": "atlas"},
+                    "max_size": {"type": "integer", "minimum": 256, "maximum": 8192, "default": 2048},
+                    "padding": {"type": "integer", "minimum": 0, "maximum": 16, "default": 2},
+                    "extrude": {"type": "integer", "minimum": 0, "maximum": 4, "default": 1},
+                    "power_of_two": {"type": "boolean", "default": true},
+                    "trim": {"type": "boolean", "default": true},
+                    "format": {"type": "string", "enum": ["png", "webp"], "default": "png"}
+                },
+                "required": ["input", "output"]
+            }
+        }),
+        json!({
+            "name": "optimize_image",
+            "description": "Optimize PNG/JPG/WebP file size (oxipng + re-encode). Batch process folder.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "input": {"type": "string", "description": "Path to image file or folder"},
+                    "output": {"type": "string", "description": "Output folder path"},
+                    "target_format": {"type": "string", "enum": ["png", "webp", "keep"], "default": "webp"},
+                    "quality": {"type": "integer", "minimum": 0, "maximum": 100, "default": 90},
+                    "lossless": {"type": "boolean", "default": false},
+                    "strip_metadata": {"type": "boolean", "default": true},
+                    "optimization_level": {"type": "integer", "minimum": 0, "maximum": 6, "default": 3}
+                },
+                "required": ["input", "output"]
+            }
+        }),
+        json!({
+            "name": "scale_image",
+            "description": "Resample image to multiple density variants (Flutter @1x/@2x/@3x, iOS @suffix, or nested folders).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "input": {"type": "string"},
+                    "output": {"type": "string"},
+                    "base_scale": {"type": "number", "minimum": 0.1, "default": 4.0},
+                    "target_scales": {
+                        "type": "array",
+                        "items": {"type": "number", "minimum": 0.1},
+                        "default": [1.0, 1.5, 2.0, 3.0]
+                    },
+                    "naming": {"type": "string", "enum": ["flutter", "suffix", "nested"], "default": "flutter"},
+                    "filter": {"type": "string", "enum": ["lanczos", "bilinear", "nearest"], "default": "lanczos"}
+                },
+                "required": ["input", "output"]
+            }
+        }),
+        json!({
+            "name": "audio_process",
+            "description": "Normalize loudness (LUFS), trim silence, and convert audio to OGG/OPUS/MP3/WAV. Batch process folder.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "input": {"type": "string", "description": "Path to audio file or folder"},
+                    "output": {"type": "string", "description": "Output folder path"},
+                    "target_format": {"type": "string", "enum": ["ogg", "opus", "mp3", "wav"], "default": "ogg"},
+                    "target_lufs": {"type": "number", "default": -16.0},
+                    "normalize": {"type": "boolean", "default": true},
+                    "trim_silence": {"type": "boolean", "default": true},
+                    "silence_threshold_db": {"type": "number", "default": -50.0},
+                    "sample_rate": {"type": "integer", "minimum": 8000, "maximum": 192000, "default": 44100},
+                    "channels": {"type": "string", "enum": ["mono", "stereo", "keep"], "default": "keep"},
+                    "bitrate_kbps": {"type": "integer", "minimum": 32, "maximum": 320, "default": 128}
+                },
+                "required": ["input", "output"]
+            }
+        }),
+        json!({
+            "name": "trim_pad",
+            "description": "Auto-crop transparent (or solid-color) borders, optionally pad uniform px and force square output.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "input": {"type": "string", "description": "Path to image file or folder"},
+                    "output": {"type": "string", "description": "Output folder path"},
+                    "alpha_threshold": {"type": "integer", "minimum": 0, "maximum": 255, "default": 1},
+                    "padding": {"type": "integer", "minimum": 0, "maximum": 4096, "default": 0},
+                    "keep_square": {"type": "boolean", "default": false},
+                    "bg_color": {"type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "description": "Hex e.g. #00FF00 to trim a solid colour instead of alpha"},
+                    "bg_tolerance": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.05}
+                },
+                "required": ["input", "output"]
+            }
+        }),
+        json!({
+            "name": "svg_optimize",
+            "description": "Minify SVG: parse via usvg, round path coords, strip metadata, drop hidden elements.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "input": {"type": "string", "description": "Path to SVG file or folder"},
+                    "output": {"type": "string", "description": "Output folder path"},
+                    "precision": {"type": "integer", "minimum": 0, "maximum": 8, "default": 3},
+                    "remove_metadata": {"type": "boolean", "default": true},
+                    "remove_hidden": {"type": "boolean", "default": true},
+                    "merge_paths": {"type": "boolean", "default": true},
+                    "pretty": {"type": "boolean", "default": false}
+                },
+                "required": ["input", "output"]
+            }
+        }),
+        json!({
             "name": "list_presets",
             "description": "List saved processing presets (names only). Use `get_preset` to fetch options.",
             "inputSchema": {"type": "object", "properties": {}}
@@ -108,6 +221,40 @@ pub fn list_tools() -> Vec<Value> {
                     "name": {"type": "string", "description": "Preset name (as returned by list_presets)"}
                 },
                 "required": ["name"]
+            }
+        }),
+        json!({
+            "name": "nine_slice",
+            "description": "Slice an image into 9 parts for UI scaling or generate Flame-compatible JSON metadata.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "input": {"type": "string", "description": "Path to image file or folder"},
+                    "output": {"type": "string", "description": "Output folder path"},
+                    "mode": {"type": "string", "enum": ["split", "metadata"], "default": "metadata"},
+                    "left": {"type": "integer", "minimum": 0, "default": 0},
+                    "right": {"type": "integer", "minimum": 0, "default": 0},
+                    "top": {"type": "integer", "minimum": 0, "default": 0},
+                    "bottom": {"type": "integer", "minimum": 0, "default": 0}
+                },
+                "required": ["input", "output", "left", "right", "top", "bottom"]
+            }
+        }),
+        json!({
+            "name": "anim_preview",
+            "description": "Generate high-quality GIF/MP4/WebM animation previews from sprite sheets or frame folders.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "input": {"type": "string", "description": "Path to sprite sheet image or folder of frames"},
+                    "output": {"type": "string", "description": "Output folder path"},
+                    "fps": {"type": "integer", "minimum": 1, "maximum": 60, "default": 12},
+                    "format": {"type": "string", "enum": ["gif", "mp4", "webm"], "default": "gif"},
+                    "scale": {"type": "integer", "minimum": 1, "maximum": 8, "default": 1},
+                    "sheet_cols": {"type": "integer", "minimum": 1, "description": "Required if input is a sprite sheet"},
+                    "sheet_rows": {"type": "integer", "minimum": 1, "description": "Required if input is a sprite sheet"}
+                },
+                "required": ["input", "output"]
             }
         }),
     ]
@@ -126,8 +273,16 @@ pub fn call(params: Option<&Value>) -> Result<Value, ToolError> {
         "bg_remove" => bg_remove_handler(&args),
         "video_to_sprite" => video_to_sprite_handler(&args),
         "vectorize" => vectorize_handler(&args),
+        "atlas_pack" => atlas_pack_handler(&args),
+        "optimize_image" => optimize_image_handler(&args),
+        "scale_image" => scale_image_handler(&args),
+        "audio_process" => audio_process_handler(&args),
+        "trim_pad" => trim_pad_handler(&args),
+        "svg_optimize" => svg_optimize_handler(&args),
         "list_presets" => list_presets_handler(),
         "get_preset" => get_preset_handler(&args),
+        "nine_slice" => nine_slice_handler(&args),
+        "anim_preview" => anim_preview_handler(&args),
         other => Err(ToolError::unknown_tool(other)),
     }
 }
@@ -532,6 +687,870 @@ fn vectorize_handler(args: &Value) -> Result<Value, ToolError> {
     ))
 }
 
+// ---------- atlas_pack ----------
+
+fn atlas_pack_handler(args: &Value) -> Result<Value, ToolError> {
+    let input = require_string(args, "input")?;
+    let output = require_string(args, "output")?;
+
+    let name = args
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("atlas")
+        .to_string();
+    let max_size = args
+        .get("max_size")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(2048)
+        .clamp(256, 8192) as u16;
+    let padding = args
+        .get("padding")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(2)
+        .min(16) as u8;
+    let extrude = args
+        .get("extrude")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(1)
+        .min(4) as u8;
+    let power_of_two = args
+        .get("power_of_two")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+    let trim = args.get("trim").and_then(|v| v.as_bool()).unwrap_or(true);
+    let format_str = args
+        .get("format")
+        .and_then(|v| v.as_str())
+        .unwrap_or("png")
+        .to_ascii_lowercase();
+    let format = match format_str.as_str() {
+        "png" => atlas_pack::OutputFormat::Png,
+        "webp" => atlas_pack::OutputFormat::Webp,
+        other => {
+            return Err(ToolError::invalid_params(format!(
+                "format: expected png|webp, got {other}"
+            )))
+        }
+    };
+    let webp_quality = args
+        .get("webp_quality")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(90)
+        .min(100) as u8;
+
+    let opts = atlas_pack::Options {
+        name,
+        max_size,
+        padding,
+        extrude,
+        power_of_two,
+        trim,
+        format,
+        webp_quality,
+    };
+
+    let input_path = PathBuf::from(input);
+    let output_path = PathBuf::from(output);
+
+    let sprites = batch::list_images(&input_path, false, &["png"])
+        .map_err(|e| ToolError::internal(format!("Listing sprites: {e}")))?;
+
+    if sprites.is_empty() {
+        return Ok(tool_text_result(
+            format!("No PNG sprites found in {}", input_path.display()),
+            json!({
+                "processed": 0,
+                "failed": 0,
+                "duration_ms": 0,
+                "output_dir": output_path.to_string_lossy(),
+                "files": [],
+            }),
+        ));
+    }
+
+    std::fs::create_dir_all(&output_path)
+        .map_err(|e| ToolError::internal(format!("Creating output dir: {e}")))?;
+
+    let start = Instant::now();
+    let report = atlas_pack::process(&sprites, &output_path, &opts)
+        .map_err(|e| ToolError::internal(format!("Atlas pack: {e}")))?;
+    let duration_ms = start.elapsed().as_millis() as u64;
+
+    let processed = report.packed as usize;
+    let failed = (report.total - report.packed) as usize;
+    let text = format!(
+        "Packed {}/{} sprites into {}×{} atlas ({:.0}% efficiency) in {duration_ms}ms. Output: {}",
+        report.packed,
+        report.total,
+        report.atlas_size.0,
+        report.atlas_size.1,
+        report.efficiency * 100.0,
+        output_path.display()
+    );
+    let structured = json!({
+        "processed": processed,
+        "failed": failed,
+        "duration_ms": duration_ms,
+        "output_dir": output_path.to_string_lossy(),
+        "atlas_path": report.atlas_path.to_string_lossy(),
+        "metadata_path": report.metadata_path.to_string_lossy(),
+        "atlas_size": { "w": report.atlas_size.0, "h": report.atlas_size.1 },
+        "efficiency": report.efficiency,
+        "files": [{
+            "input": input_path.to_string_lossy(),
+            "output": report.atlas_path.to_string_lossy(),
+            "status": "ok",
+        }],
+    });
+    Ok(tool_text_result(text, structured))
+}
+
+// ---------- optimize_image ----------
+
+fn optimize_image_handler(args: &Value) -> Result<Value, ToolError> {
+    let input = require_string(args, "input")?;
+    let output = require_string(args, "output")?;
+
+    let target_format = match args
+        .get("target_format")
+        .and_then(|v| v.as_str())
+        .unwrap_or("webp")
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "png" => optimize::TargetFormat::Png,
+        "webp" => optimize::TargetFormat::Webp,
+        "keep" => optimize::TargetFormat::Keep,
+        other => {
+            return Err(ToolError::invalid_params(format!(
+                "target_format: expected png|webp|keep, got {other}"
+            )))
+        }
+    };
+
+    let quality = args
+        .get("quality")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(90)
+        .min(100) as u8;
+    let lossless = args
+        .get("lossless")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let strip_metadata = args
+        .get("strip_metadata")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+    let optimization_level = args
+        .get("optimization_level")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(3)
+        .min(6) as u8;
+
+    let opts = optimize::Options {
+        target_format,
+        quality,
+        lossless,
+        strip_metadata,
+        optimization_level,
+    };
+
+    let input_path = PathBuf::from(input);
+    let output_path = PathBuf::from(output);
+
+    let files = batch::list_images(&input_path, false, &["png", "jpg", "jpeg", "webp"])
+        .map_err(|e| ToolError::internal(format!("Listing input: {e}")))?;
+
+    if files.is_empty() {
+        return Ok(tool_text_result(
+            format!("No images found in {}", input_path.display()),
+            json!({
+                "processed": 0,
+                "failed": 0,
+                "duration_ms": 0,
+                "output_dir": output_path.to_string_lossy(),
+                "files": [],
+            }),
+        ));
+    }
+
+    std::fs::create_dir_all(&output_path)
+        .map_err(|e| ToolError::internal(format!("Creating output dir: {e}")))?;
+
+    let start = Instant::now();
+    let results: Vec<OptimizeResult> = files
+        .par_iter()
+        .map(|f| process_one_optimize(f, &output_path, &opts))
+        .collect();
+    let duration_ms = start.elapsed().as_millis();
+
+    let processed = results.iter().filter(|r| r.error.is_none()).count();
+    let failed = results.len() - processed;
+
+    let text = format!(
+        "Optimized {processed}/{} images in {duration_ms}ms (output: {})",
+        results.len(),
+        output_path.display()
+    );
+    let structured = json!({
+        "processed": processed,
+        "failed": failed,
+        "duration_ms": duration_ms,
+        "output_dir": output_path.to_string_lossy(),
+        "files": results.iter().map(|r| json!({
+            "input": r.input.to_string_lossy(),
+            "output": r.output.as_ref().map(|p| p.to_string_lossy().into_owned()),
+            "input_size": r.input_size,
+            "output_size": r.output_size,
+            "ratio": r.ratio,
+            "status": if r.error.is_none() { "ok" } else { "failed" },
+            "error": r.error,
+        })).collect::<Vec<_>>(),
+    });
+
+    Ok(tool_text_result(text, structured))
+}
+
+struct OptimizeResult {
+    input: PathBuf,
+    output: Option<PathBuf>,
+    input_size: Option<u64>,
+    output_size: Option<u64>,
+    ratio: Option<f32>,
+    error: Option<String>,
+}
+
+fn process_one_optimize(
+    input_path: &Path,
+    output_dir: &Path,
+    opts: &optimize::Options,
+) -> OptimizeResult {
+    let stem = match input_path.file_stem() {
+        Some(s) => s.to_string_lossy().into_owned(),
+        None => {
+            return OptimizeResult {
+                input: input_path.to_path_buf(),
+                output: None,
+                input_size: None,
+                output_size: None,
+                ratio: None,
+                error: Some(format!("Invalid filename: {}", input_path.display())),
+            }
+        }
+    };
+    let target_stub = output_dir.join(stem);
+    match optimize::process(input_path, &target_stub, opts) {
+        Ok(report) => OptimizeResult {
+            input: input_path.to_path_buf(),
+            output: Some(report.output_path),
+            input_size: Some(report.input_size),
+            output_size: Some(report.output_size),
+            ratio: Some(report.ratio),
+            error: None,
+        },
+        Err(e) => OptimizeResult {
+            input: input_path.to_path_buf(),
+            output: None,
+            input_size: None,
+            output_size: None,
+            ratio: None,
+            error: Some(format!("{e}")),
+        },
+    }
+}
+
+// ---------- scale_image ----------
+
+fn scale_image_handler(args: &Value) -> Result<Value, ToolError> {
+    let input = require_string(args, "input")?;
+    let output = require_string(args, "output")?;
+
+    let base_scale = args
+        .get("base_scale")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(4.0) as f32;
+
+    let target_scales: Vec<f32> = match args.get("target_scales") {
+        Some(Value::Array(arr)) => arr
+            .iter()
+            .filter_map(|v| v.as_f64().map(|f| f as f32))
+            .collect(),
+        Some(_) => {
+            return Err(ToolError::invalid_params(
+                "target_scales: expected array of numbers",
+            ))
+        }
+        None => vec![1.0, 1.5, 2.0, 3.0],
+    };
+    if target_scales.is_empty() {
+        return Err(ToolError::invalid_params(
+            "target_scales must list at least one density",
+        ));
+    }
+
+    let naming = match args
+        .get("naming")
+        .and_then(|v| v.as_str())
+        .unwrap_or("flutter")
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "flutter" => scale::NamingMode::Flutter,
+        "suffix" => scale::NamingMode::Suffix,
+        "nested" => scale::NamingMode::Nested,
+        other => {
+            return Err(ToolError::invalid_params(format!(
+                "naming: expected flutter|suffix|nested, got {other}"
+            )))
+        }
+    };
+
+    let filter = match args
+        .get("filter")
+        .and_then(|v| v.as_str())
+        .unwrap_or("lanczos")
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "lanczos" => scale::Filter::Lanczos,
+        "bilinear" => scale::Filter::Bilinear,
+        "nearest" => scale::Filter::Nearest,
+        other => {
+            return Err(ToolError::invalid_params(format!(
+                "filter: expected lanczos|bilinear|nearest, got {other}"
+            )))
+        }
+    };
+
+    let opts = scale::Options {
+        base_scale,
+        target_scales,
+        naming,
+        filter,
+    };
+
+    let input_path = PathBuf::from(input);
+    let output_path = PathBuf::from(output);
+
+    let files = batch::list_images(&input_path, false, &["png", "jpg", "jpeg", "webp"])
+        .map_err(|e| ToolError::internal(format!("Listing input: {e}")))?;
+
+    if files.is_empty() {
+        return Ok(tool_text_result(
+            format!("No images found in {}", input_path.display()),
+            json!({
+                "processed": 0,
+                "failed": 0,
+                "duration_ms": 0,
+                "output_dir": output_path.to_string_lossy(),
+                "files": [],
+            }),
+        ));
+    }
+
+    std::fs::create_dir_all(&output_path)
+        .map_err(|e| ToolError::internal(format!("Creating output dir: {e}")))?;
+
+    let start = Instant::now();
+    let results: Vec<ScaleResult> = files
+        .par_iter()
+        .map(|f| match scale::process(f, &output_path, &opts) {
+            Ok(report) => ScaleResult {
+                input: f.clone(),
+                variants: report.variants,
+                error: None,
+            },
+            Err(e) => ScaleResult {
+                input: f.clone(),
+                variants: Vec::new(),
+                error: Some(format!("{e}")),
+            },
+        })
+        .collect();
+    let duration_ms = start.elapsed().as_millis();
+
+    let processed = results.iter().filter(|r| r.error.is_none()).count();
+    let failed = results.len() - processed;
+    let total_variants: usize = results.iter().map(|r| r.variants.len()).sum();
+
+    let text = format!(
+        "Scaled {processed}/{} images into {total_variants} variants in {duration_ms}ms",
+        results.len()
+    );
+    let structured = json!({
+        "processed": processed,
+        "failed": failed,
+        "duration_ms": duration_ms,
+        "output_dir": output_path.to_string_lossy(),
+        "files": results.iter().map(|r| json!({
+            "input": r.input.to_string_lossy(),
+            "variants": r.variants.iter().map(|p| p.to_string_lossy().into_owned()).collect::<Vec<_>>(),
+            "status": if r.error.is_none() { "ok" } else { "failed" },
+            "error": r.error,
+        })).collect::<Vec<_>>(),
+    });
+
+    Ok(tool_text_result(text, structured))
+}
+
+struct ScaleResult {
+    input: PathBuf,
+    variants: Vec<PathBuf>,
+    error: Option<String>,
+}
+
+// ---------- audio_process ----------
+
+fn audio_process_handler(args: &Value) -> Result<Value, ToolError> {
+    let input = require_string(args, "input")?;
+    let output = require_string(args, "output")?;
+
+    let target_format_str = args
+        .get("target_format")
+        .and_then(|v| v.as_str())
+        .unwrap_or("ogg")
+        .to_ascii_lowercase();
+    let target_format = match target_format_str.as_str() {
+        "ogg" => audio::TargetFormat::Ogg,
+        "opus" => audio::TargetFormat::Opus,
+        "mp3" => audio::TargetFormat::Mp3,
+        "wav" => audio::TargetFormat::Wav,
+        other => {
+            return Err(ToolError::invalid_params(format!(
+                "target_format: expected ogg|opus|mp3|wav, got {other}"
+            )))
+        }
+    };
+
+    let target_lufs = args
+        .get("target_lufs")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(-16.0) as f32;
+    let normalize = args
+        .get("normalize")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+    let trim_silence = args
+        .get("trim_silence")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+    let silence_threshold_db = args
+        .get("silence_threshold_db")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(-50.0) as f32;
+    let sample_rate = args
+        .get("sample_rate")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(44_100)
+        .clamp(8_000, 192_000) as u32;
+    let channels_str = args
+        .get("channels")
+        .and_then(|v| v.as_str())
+        .unwrap_or("keep")
+        .to_ascii_lowercase();
+    let channels = match channels_str.as_str() {
+        "mono" => audio::Channels::Mono,
+        "stereo" => audio::Channels::Stereo,
+        "keep" => audio::Channels::Keep,
+        other => {
+            return Err(ToolError::invalid_params(format!(
+                "channels: expected mono|stereo|keep, got {other}"
+            )))
+        }
+    };
+    let bitrate_kbps = args
+        .get("bitrate_kbps")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(128)
+        .clamp(32, 320) as u16;
+
+    let opts = audio::Options {
+        target_format,
+        target_lufs,
+        normalize,
+        trim_silence,
+        silence_threshold_db,
+        sample_rate,
+        channels,
+        bitrate_kbps,
+    };
+
+    let input_path = PathBuf::from(input);
+    let output_path = PathBuf::from(output);
+
+    let files = batch::list_images(
+        &input_path,
+        false,
+        &["wav", "mp3", "ogg", "m4a", "flac", "opus"],
+    )
+    .map_err(|e| ToolError::internal(format!("Listing input: {e}")))?;
+
+    if files.is_empty() {
+        return Ok(tool_text_result(
+            format!("No audio files found in {}", input_path.display()),
+            json!({
+                "processed": 0,
+                "failed": 0,
+                "duration_ms": 0,
+                "output_dir": output_path.to_string_lossy(),
+                "files": [],
+            }),
+        ));
+    }
+
+    std::fs::create_dir_all(&output_path)
+        .map_err(|e| ToolError::internal(format!("Creating output dir: {e}")))?;
+
+    audio::check_ffmpeg().map_err(|e| ToolError::internal(format!("ffmpeg check: {e}")))?;
+
+    let start = Instant::now();
+    let results: Vec<AudioCallResult> = files
+        .par_iter()
+        .map(|p| process_one_audio(p, &output_path, &opts))
+        .collect();
+    let duration_ms = start.elapsed().as_millis() as u64;
+
+    let processed = results.iter().filter(|r| r.error.is_none()).count();
+    let failed = results.len() - processed;
+
+    let text = format!(
+        "Processed {processed}/{total} audio file(s) in {duration_ms}ms. Output: {out}",
+        total = results.len(),
+        out = output_path.display()
+    );
+    let structured = json!({
+        "processed": processed,
+        "failed": failed,
+        "duration_ms": duration_ms,
+        "output_dir": output_path.to_string_lossy(),
+        "files": results.iter().map(|r| json!({
+            "input": r.input.to_string_lossy(),
+            "output": r.output.as_ref().map(|p| p.to_string_lossy().into_owned()),
+            "duration_ms_in": r.duration_ms_in,
+            "duration_ms_out": r.duration_ms_out,
+            "integrated_lufs": r.integrated_lufs,
+            "status": if r.error.is_none() { "ok" } else { "failed" },
+            "error": r.error,
+        })).collect::<Vec<_>>(),
+    });
+
+    Ok(tool_text_result(text, structured))
+}
+
+struct AudioCallResult {
+    input: PathBuf,
+    output: Option<PathBuf>,
+    duration_ms_in: Option<u32>,
+    duration_ms_out: Option<u32>,
+    integrated_lufs: Option<f32>,
+    error: Option<String>,
+}
+
+fn process_one_audio(
+    input_path: &Path,
+    output_dir: &Path,
+    opts: &audio::Options,
+) -> AudioCallResult {
+    let stem = match input_path.file_stem() {
+        Some(s) => s.to_string_lossy().into_owned(),
+        None => {
+            return AudioCallResult {
+                input: input_path.to_path_buf(),
+                output: None,
+                duration_ms_in: None,
+                duration_ms_out: None,
+                integrated_lufs: None,
+                error: Some(format!("Invalid filename: {}", input_path.display())),
+            };
+        }
+    };
+    let out_path = output_dir.join(format!("{stem}.{}", opts.target_format.extension()));
+    match audio::process(input_path, &out_path, opts) {
+        Ok(report) => AudioCallResult {
+            input: input_path.to_path_buf(),
+            output: Some(out_path),
+            duration_ms_in: Some(report.duration_ms_in),
+            duration_ms_out: Some(report.duration_ms_out),
+            integrated_lufs: report.integrated_lufs,
+            error: None,
+        },
+        Err(e) => AudioCallResult {
+            input: input_path.to_path_buf(),
+            output: None,
+            duration_ms_in: None,
+            duration_ms_out: None,
+            integrated_lufs: None,
+            error: Some(format!("{e}")),
+        },
+    }
+}
+
+// ---------- trim_pad ----------
+
+fn trim_pad_handler(args: &Value) -> Result<Value, ToolError> {
+    let input = require_string(args, "input")?;
+    let output = require_string(args, "output")?;
+
+    let alpha_threshold = args
+        .get("alpha_threshold")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(1)
+        .min(255) as u8;
+    let padding = args
+        .get("padding")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0)
+        .min(u16::MAX as u64) as u16;
+    let keep_square = args
+        .get("keep_square")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let bg_color = match args.get("bg_color").and_then(|v| v.as_str()) {
+        Some(s) => Some(
+            parse_hex_color(s).map_err(|e| ToolError::invalid_params(format!("bg_color: {e}")))?,
+        ),
+        None => None,
+    };
+    let bg_tolerance = args
+        .get("bg_tolerance")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.05) as f32;
+
+    let opts = trim_pad::Options {
+        alpha_threshold,
+        padding,
+        keep_square,
+        bg_color,
+        bg_tolerance,
+    };
+
+    let input_path = PathBuf::from(input);
+    let output_path = PathBuf::from(output);
+
+    let files = batch::list_images(&input_path, false, &["png", "jpg", "jpeg", "webp"])
+        .map_err(|e| ToolError::internal(format!("Listing input: {e}")))?;
+
+    if files.is_empty() {
+        return Ok(tool_text_result(
+            format!("No images found in {}", input_path.display()),
+            json!({
+                "processed": 0,
+                "failed": 0,
+                "duration_ms": 0,
+                "output_dir": output_path.to_string_lossy(),
+                "files": [],
+            }),
+        ));
+    }
+
+    std::fs::create_dir_all(&output_path)
+        .map_err(|e| ToolError::internal(format!("Creating output dir: {e}")))?;
+
+    let start = Instant::now();
+    let results: Vec<TrimResult> = files
+        .par_iter()
+        .map(|input_file| {
+            let file_name = match input_file.file_name() {
+                Some(n) => n,
+                None => {
+                    return TrimResult {
+                        input: input_file.clone(),
+                        output: None,
+                        output_size: None,
+                        bbox: None,
+                        error: Some(format!("Invalid filename: {}", input_file.display())),
+                    }
+                }
+            };
+            let out_path = output_path.join(file_name);
+            match trim_pad::process(input_file, &out_path, &opts) {
+                Ok(report) => TrimResult {
+                    input: input_file.clone(),
+                    output: Some(out_path),
+                    output_size: Some(report.output_size),
+                    bbox: Some(report.bbox),
+                    error: None,
+                },
+                Err(e) => TrimResult {
+                    input: input_file.clone(),
+                    output: None,
+                    output_size: None,
+                    bbox: None,
+                    error: Some(format!("{e}")),
+                },
+            }
+        })
+        .collect();
+    let duration_ms = start.elapsed().as_millis() as u64;
+
+    let processed = results.iter().filter(|r| r.error.is_none()).count();
+    let failed = results.len() - processed;
+
+    Ok(tool_text_result(
+        format!(
+            "Trimmed {processed}/{} images in {duration_ms}ms (output: {})",
+            results.len(),
+            output_path.display()
+        ),
+        json!({
+            "processed": processed,
+            "failed": failed,
+            "duration_ms": duration_ms,
+            "output_dir": output_path.to_string_lossy(),
+            "files": results.iter().map(|r| json!({
+                "input": r.input.to_string_lossy(),
+                "output": r.output.as_ref().map(|p| p.to_string_lossy().into_owned()),
+                "output_size": r.output_size,
+                "bbox": r.bbox,
+                "status": if r.error.is_none() { "ok" } else { "failed" },
+                "error": r.error,
+            })).collect::<Vec<_>>(),
+        }),
+    ))
+}
+
+struct TrimResult {
+    input: PathBuf,
+    output: Option<PathBuf>,
+    output_size: Option<(u32, u32)>,
+    bbox: Option<(u32, u32, u32, u32)>,
+    error: Option<String>,
+}
+
+// ---------- svg_optimize ----------
+
+fn svg_optimize_handler(args: &Value) -> Result<Value, ToolError> {
+    let input = require_string(args, "input")?;
+    let output = require_string(args, "output")?;
+
+    let precision = args
+        .get("precision")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(3)
+        .min(8) as u8;
+    let remove_metadata = args
+        .get("remove_metadata")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+    let remove_hidden = args
+        .get("remove_hidden")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+    let merge_paths = args
+        .get("merge_paths")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+    let pretty = args
+        .get("pretty")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    let opts = svg_optimize::Options {
+        precision,
+        remove_metadata,
+        remove_hidden,
+        merge_paths,
+        pretty,
+    };
+
+    let input_path = PathBuf::from(input);
+    let output_path = PathBuf::from(output);
+
+    let files = batch::list_images(&input_path, false, &["svg"])
+        .map_err(|e| ToolError::internal(format!("Listing input: {e}")))?;
+
+    if files.is_empty() {
+        return Ok(tool_text_result(
+            format!("No SVG files found in {}", input_path.display()),
+            json!({
+                "processed": 0,
+                "failed": 0,
+                "duration_ms": 0,
+                "output_dir": output_path.to_string_lossy(),
+                "files": [],
+            }),
+        ));
+    }
+
+    std::fs::create_dir_all(&output_path)
+        .map_err(|e| ToolError::internal(format!("Creating output dir: {e}")))?;
+
+    let start = Instant::now();
+    let results: Vec<SvgResult> = files
+        .par_iter()
+        .map(|input_file| {
+            let file_name = match input_file.file_name() {
+                Some(n) => n,
+                None => {
+                    return SvgResult {
+                        input: input_file.clone(),
+                        output: None,
+                        input_size: None,
+                        output_size: None,
+                        ratio: None,
+                        error: Some(format!("Invalid filename: {}", input_file.display())),
+                    }
+                }
+            };
+            let out_path = output_path.join(file_name);
+            match svg_optimize::process(input_file, &out_path, &opts) {
+                Ok(report) => SvgResult {
+                    input: input_file.clone(),
+                    output: Some(out_path),
+                    input_size: Some(report.input_size),
+                    output_size: Some(report.output_size),
+                    ratio: Some(report.ratio),
+                    error: None,
+                },
+                Err(e) => SvgResult {
+                    input: input_file.clone(),
+                    output: None,
+                    input_size: None,
+                    output_size: None,
+                    ratio: None,
+                    error: Some(format!("{e}")),
+                },
+            }
+        })
+        .collect();
+    let duration_ms = start.elapsed().as_millis() as u64;
+
+    let processed = results.iter().filter(|r| r.error.is_none()).count();
+    let failed = results.len() - processed;
+
+    Ok(tool_text_result(
+        format!(
+            "Optimized {processed}/{} SVGs in {duration_ms}ms (output: {})",
+            results.len(),
+            output_path.display()
+        ),
+        json!({
+            "processed": processed,
+            "failed": failed,
+            "duration_ms": duration_ms,
+            "output_dir": output_path.to_string_lossy(),
+            "files": results.iter().map(|r| json!({
+                "input": r.input.to_string_lossy(),
+                "output": r.output.as_ref().map(|p| p.to_string_lossy().into_owned()),
+                "input_size": r.input_size,
+                "output_size": r.output_size,
+                "ratio": r.ratio,
+                "status": if r.error.is_none() { "ok" } else { "failed" },
+                "error": r.error,
+            })).collect::<Vec<_>>(),
+        }),
+    ))
+}
+
+struct SvgResult {
+    input: PathBuf,
+    output: Option<PathBuf>,
+    input_size: Option<u64>,
+    output_size: Option<u64>,
+    ratio: Option<f32>,
+    error: Option<String>,
+}
+
 // ---------- list_presets / get_preset ----------
 
 fn list_presets_handler() -> Result<Value, ToolError> {
@@ -581,6 +1600,256 @@ fn get_preset_handler(args: &Value) -> Result<Value, ToolError> {
         "options": preset.options,
     });
     Ok(tool_text_result(text, structured))
+}
+
+// ---------- nine_slice ----------
+
+fn nine_slice_handler(args: &Value) -> Result<Value, ToolError> {
+    let input = require_string(args, "input")?;
+    let output = require_string(args, "output")?;
+
+    let mode_str = args
+        .get("mode")
+        .and_then(|v| v.as_str())
+        .unwrap_or("metadata")
+        .to_ascii_lowercase();
+    let output_mode = match mode_str.as_str() {
+        "split" => nine_slice::OutputMode::Split,
+        "metadata" => nine_slice::OutputMode::Metadata,
+        other => {
+            return Err(ToolError::invalid_params(format!(
+                "mode: expected split|metadata, got {other}"
+            )))
+        }
+    };
+
+    let left = args.get("left").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+    let right = args.get("right").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+    let top = args.get("top").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+    let bottom = args.get("bottom").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+
+    let opts = nine_slice::Options {
+        left,
+        right,
+        top,
+        bottom,
+        output_mode,
+    };
+
+    let input_path = PathBuf::from(&input);
+    let output_path = PathBuf::from(&output);
+
+    let files = batch::list_images(&input_path, false, &["png", "jpg", "jpeg", "webp"])
+        .map_err(|e| ToolError::internal(format!("Listing input: {e}")))?;
+
+    if files.is_empty() {
+        return Ok(tool_text_result(
+            format!("No images found in {}", input_path.display()),
+            json!({
+                "processed": 0,
+                "failed": 0,
+                "duration_ms": 0,
+                "output_dir": output_path.to_string_lossy(),
+                "files": [],
+            }),
+        ));
+    }
+
+    std::fs::create_dir_all(&output_path)
+        .map_err(|e| ToolError::internal(format!("Creating output dir: {e}")))?;
+
+    let start = Instant::now();
+    let results: Vec<NineSliceResult> = files
+        .par_iter()
+        .map(|p| match nine_slice::process(p, &output_path, &opts) {
+            Ok(report) => NineSliceResult {
+                input: p.clone(),
+                output_files: report.output_files,
+                error: None,
+            },
+            Err(e) => NineSliceResult {
+                input: p.clone(),
+                output_files: vec![],
+                error: Some(format!("{e}")),
+            },
+        })
+        .collect();
+    let duration_ms = start.elapsed().as_millis() as u64;
+
+    let processed = results.iter().filter(|r| r.error.is_none()).count();
+    let failed = results.len() - processed;
+
+    let text = format!(
+        "Processed {processed}/{total} files in {duration_ms}ms. Output: {out}",
+        total = results.len(),
+        out = output_path.display()
+    );
+    let structured = json!({
+        "processed": processed,
+        "failed": failed,
+        "duration_ms": duration_ms,
+        "output_dir": output_path.to_string_lossy(),
+        "files": results.iter().map(|r| json!({
+            "input": r.input.to_string_lossy(),
+            "outputs": r.output_files.iter().map(|p| p.to_string_lossy()).collect::<Vec<_>>(),
+            "status": if r.error.is_none() { "ok" } else { "failed" },
+            "error": r.error,
+        })).collect::<Vec<_>>(),
+    });
+
+    Ok(tool_text_result(text, structured))
+}
+
+struct NineSliceResult {
+    input: PathBuf,
+    output_files: Vec<PathBuf>,
+    error: Option<String>,
+}
+
+// ---------- anim_preview ----------
+
+fn anim_preview_handler(args: &Value) -> Result<Value, ToolError> {
+    let input = require_string(args, "input")?;
+    let output = require_string(args, "output")?;
+
+    let fps = args
+        .get("fps")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(12)
+        .clamp(1, 60) as u8;
+
+    let format_str = args
+        .get("format")
+        .and_then(|v| v.as_str())
+        .unwrap_or("gif")
+        .to_ascii_lowercase();
+    let output_format = match format_str.as_str() {
+        "gif" => anim_preview::PreviewFormat::Gif,
+        "mp4" => anim_preview::PreviewFormat::Mp4,
+        "webm" => anim_preview::PreviewFormat::Webm,
+        other => {
+            return Err(ToolError::invalid_params(format!(
+                "format: expected gif|mp4|webm, got {other}"
+            )))
+        }
+    };
+
+    let upscale = args
+        .get("scale")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(1)
+        .clamp(1, 8) as u8;
+
+    let mut frame_size = args
+        .get("frame_size")
+        .and_then(|v| v.as_u64())
+        .map(|v| v as u32);
+
+    // Helper: calculate frame_size from cols if provided
+    if frame_size.is_none() {
+        if let Some(cols) = args.get("sheet_cols").and_then(|v| v.as_u64()) {
+            let input_path = Path::new(&input);
+            if input_path.is_file() {
+                if let Ok(img) = image::open(input_path) {
+                    frame_size = Some(img.width() / cols as u32);
+                }
+            }
+        }
+    }
+
+    let opts = anim_preview::Options {
+        fps,
+        output_format,
+        loop_anim: true,
+        upscale,
+        frame_size,
+    };
+
+    let input_path = PathBuf::from(&input);
+    let output_path = PathBuf::from(&output);
+
+    let is_frame_folder = input_path.is_dir()
+        && std::fs::read_dir(&input_path).map(|mut entries| {
+            entries.any(|e| {
+                e.ok()
+                    .map(|e| {
+                        e.path()
+                            .extension()
+                            .is_some_and(|ext| ext.eq_ignore_ascii_case("png"))
+                    })
+                    .unwrap_or(false)
+            })
+        }).unwrap_or(false);
+
+    if input_path.is_file() || is_frame_folder {
+        std::fs::create_dir_all(&output_path)
+            .map_err(|e| ToolError::internal(format!("Creating output dir: {e}")))?;
+
+        let report = anim_preview::process(&input_path, &output_path, &opts)
+            .map_err(|e| ToolError::internal(format!("Anim preview: {e}")))?;
+
+        let text = format!(
+            "Generated {} preview: {} ({} frames, {}px)",
+            format_str,
+            report.output_path.display(),
+            report.frame_count,
+            report.frame_size
+        );
+        let structured = json!({
+            "output": report.output_path.to_string_lossy(),
+            "frame_count": report.frame_count,
+            "frame_size": report.frame_size,
+            "format": format_str,
+            "status": "ok",
+        });
+        Ok(tool_text_result(text, structured))
+    } else {
+        let files = batch::list_images(&input_path, false, &["png"])
+            .map_err(|e| ToolError::internal(format!("Listing input: {e}")))?;
+
+        if files.is_empty() {
+            return Ok(tool_text_result(
+                format!("No sprite sheets found in {}", input_path.display()),
+                json!({ "processed": 0, "failed": 0 }),
+            ));
+        }
+
+        std::fs::create_dir_all(&output_path)
+            .map_err(|e| ToolError::internal(format!("Creating output dir: {e}")))?;
+
+        let start = Instant::now();
+        let results: Vec<Value> = files
+            .par_iter()
+            .map(|p| match anim_preview::process(p, &output_path, &opts) {
+                Ok(report) => json!({
+                    "input": p.to_string_lossy(),
+                    "output": report.output_path.to_string_lossy(),
+                    "status": "ok"
+                }),
+                Err(e) => json!({
+                    "input": p.to_string_lossy(),
+                    "status": "failed",
+                    "error": format!("{e}")
+                }),
+            })
+            .collect();
+        let duration_ms = start.elapsed().as_millis();
+
+        let processed = results.iter().filter(|v| v["status"] == "ok").count();
+        let failed = results.len() - processed;
+
+        Ok(tool_text_result(
+            format!(
+                "Processed {processed}/{} animations in {duration_ms}ms",
+                results.len()
+            ),
+            json!({
+                "processed": processed,
+                "failed": failed,
+                "results": results
+            }),
+        ))
+    }
 }
 
 // ---------- helpers ----------
@@ -654,15 +1923,23 @@ mod tests {
     }
 
     #[test]
-    fn list_tools_returns_five_tools() {
+    fn list_tools_returns_thirteen_tools() {
         let tools = list_tools();
-        assert_eq!(tools.len(), 5);
+        assert_eq!(tools.len(), 13);
         let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
         assert!(names.contains(&"bg_remove"));
         assert!(names.contains(&"video_to_sprite"));
         assert!(names.contains(&"vectorize"));
+        assert!(names.contains(&"atlas_pack"));
+        assert!(names.contains(&"optimize_image"));
+        assert!(names.contains(&"scale_image"));
+        assert!(names.contains(&"audio_process"));
+        assert!(names.contains(&"trim_pad"));
+        assert!(names.contains(&"svg_optimize"));
         assert!(names.contains(&"list_presets"));
         assert!(names.contains(&"get_preset"));
+        assert!(names.contains(&"nine_slice"));
+        assert!(names.contains(&"anim_preview"));
     }
 
     #[test]
@@ -774,6 +2051,177 @@ mod tests {
         let result = call(Some(&params)).unwrap();
         assert_eq!(result["structuredContent"]["processed"], 0);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn atlas_pack_missing_input_returns_invalid_params() {
+        let params = json!({
+            "name": "atlas_pack",
+            "arguments": { "output": "/tmp/out" }
+        });
+        let err = call(Some(&params)).unwrap_err();
+        assert_eq!(err.code, ERR_INVALID_PARAMS);
+    }
+
+    #[test]
+    fn atlas_pack_invalid_format_returns_invalid_params() {
+        let params = json!({
+            "name": "atlas_pack",
+            "arguments": {
+                "input": "/tmp/in",
+                "output": "/tmp/out",
+                "format": "gif"
+            }
+        });
+        let err = call(Some(&params)).unwrap_err();
+        assert_eq!(err.code, ERR_INVALID_PARAMS);
+    }
+
+    #[test]
+    fn atlas_pack_empty_input_dir_returns_zero() {
+        let dir =
+            std::env::temp_dir().join(format!("pixiekit-mcp-atlas-empty-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let params = json!({
+            "name": "atlas_pack",
+            "arguments": { "input": dir.to_string_lossy(), "output": dir.to_string_lossy() }
+        });
+        let result = call(Some(&params)).unwrap();
+        assert_eq!(result["structuredContent"]["processed"], 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn optimize_image_missing_input_returns_invalid_params() {
+        let params = json!({
+            "name": "optimize_image",
+            "arguments": { "output": "/tmp/out" }
+        });
+        let err = call(Some(&params)).unwrap_err();
+        assert_eq!(err.code, ERR_INVALID_PARAMS);
+    }
+
+    #[test]
+    fn optimize_image_invalid_format_returns_invalid_params() {
+        let params = json!({
+            "name": "optimize_image",
+            "arguments": { "input": "/tmp/in", "output": "/tmp/out", "target_format": "avif" }
+        });
+        let err = call(Some(&params)).unwrap_err();
+        assert_eq!(err.code, ERR_INVALID_PARAMS);
+    }
+
+    #[test]
+    fn optimize_image_empty_input_dir_returns_zero() {
+        let dir = std::env::temp_dir().join(format!(
+            "pixiekit-mcp-optimize-empty-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let params = json!({
+            "name": "optimize_image",
+            "arguments": { "input": dir.to_string_lossy(), "output": dir.to_string_lossy() }
+        });
+        let result = call(Some(&params)).unwrap();
+        assert_eq!(result["structuredContent"]["processed"], 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn scale_image_missing_input_returns_invalid_params() {
+        let params = json!({
+            "name": "scale_image",
+            "arguments": { "output": "/tmp/out" }
+        });
+        let err = call(Some(&params)).unwrap_err();
+        assert_eq!(err.code, ERR_INVALID_PARAMS);
+    }
+
+    #[test]
+    fn scale_image_invalid_naming_returns_invalid_params() {
+        let params = json!({
+            "name": "scale_image",
+            "arguments": { "input": "/tmp/in", "output": "/tmp/out", "naming": "xcode" }
+        });
+        let err = call(Some(&params)).unwrap_err();
+        assert_eq!(err.code, ERR_INVALID_PARAMS);
+    }
+
+    #[test]
+    fn scale_image_empty_target_scales_returns_invalid_params() {
+        let params = json!({
+            "name": "scale_image",
+            "arguments": {
+                "input": "/tmp/in",
+                "output": "/tmp/out",
+                "target_scales": []
+            }
+        });
+        let err = call(Some(&params)).unwrap_err();
+        assert_eq!(err.code, ERR_INVALID_PARAMS);
+    }
+
+    #[test]
+    fn scale_image_empty_input_dir_returns_zero() {
+        let dir =
+            std::env::temp_dir().join(format!("pixiekit-mcp-scale-empty-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let params = json!({
+            "name": "scale_image",
+            "arguments": { "input": dir.to_string_lossy(), "output": dir.to_string_lossy() }
+        });
+        let result = call(Some(&params)).unwrap();
+        assert_eq!(result["structuredContent"]["processed"], 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn audio_process_missing_input_returns_invalid_params() {
+        let params = json!({
+            "name": "audio_process",
+            "arguments": { "output": "/tmp/out" }
+        });
+        let err = call(Some(&params)).unwrap_err();
+        assert_eq!(err.code, ERR_INVALID_PARAMS);
+        assert!(err.message.contains("input"));
+    }
+
+    #[test]
+    fn audio_process_invalid_target_format_returns_invalid_params() {
+        let params = json!({
+            "name": "audio_process",
+            "arguments": {
+                "input": "/tmp/in",
+                "output": "/tmp/out",
+                "target_format": "flac"
+            }
+        });
+        let err = call(Some(&params)).unwrap_err();
+        assert_eq!(err.code, ERR_INVALID_PARAMS);
+    }
+
+    #[test]
+    fn audio_process_invalid_channels_returns_invalid_params() {
+        let dir =
+            std::env::temp_dir().join(format!("pixiekit-mcp-audio-bad-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // Need files to reach the channels parse — use a fake file
+        std::fs::write(dir.join("a.wav"), b"x").unwrap();
+        let params = json!({
+            "name": "audio_process",
+            "arguments": {
+                "input": dir.to_string_lossy(),
+                "output": dir.to_string_lossy(),
+                "channels": "surround"
+            }
+        });
+        let err = call(Some(&params)).unwrap_err();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(err.code, ERR_INVALID_PARAMS);
     }
 
     #[test]

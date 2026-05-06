@@ -1,0 +1,145 @@
+# Permissions for custom commands in src/lib.rs
+
+[[permission]]
+identifier = "allow-pick-folder"
+description = "Allows picking a folder"
+commands.allow = ["pick_folder"]
+
+[[permission]]
+identifier = "allow-pick-file"
+description = "Allows picking a file"
+commands.allow = ["pick_file"]
+
+[[permission]]
+identifier = "allow-run-bg-remove"
+description = "Allows running background removal"
+commands.allow = ["run_bg_remove"]
+
+[[permission]]
+identifier = "allow-run-vectorize"
+description = "Allows running vectorization"
+commands.allow = ["run_vectorize"]
+
+[[permission]]
+identifier = "allow-run-video-to-sprite"
+description = "Allows running video to sprite conversion"
+commands.allow = ["run_video_to_sprite"]
+
+[[permission]]
+identifier = "allow-run-atlas-pack"
+description = "Allows running atlas packing"
+commands.allow = ["run_atlas_pack"]
+
+[[permission]]
+identifier = "allow-run-optimize"
+description = "Allows running image optimization"
+commands.allow = ["run_optimize"]
+
+[[permission]]
+identifier = "allow-run-scale"
+description = "Allows running image scaling"
+commands.allow = ["run_scale"]
+
+[[permission]]
+identifier = "allow-run-audio"
+description = "Allows running audio processing"
+commands.allow = ["run_audio"]
+
+[[permission]]
+identifier = "allow-run-trim-pad"
+description = "Allows running trim and pad"
+commands.allow = ["run_trim_pad"]
+
+[[permission]]
+identifier = "allow-run-svg-optimize"
+description = "Allows running SVG optimization"
+commands.allow = ["run_svg_optimize"]
+
+[[permission]]
+identifier = "allow-run-nine-slice"
+description = "Allows running nine-slice scaling"
+commands.allow = ["run_nine_slice"]
+
+[[permission]]
+identifier = "allow-run-anim-preview"
+description = "Allows running animation preview"
+commands.allow = ["run_anim_preview"]
+
+[[permission]]
+identifier = "allow-preview-bg-remove"
+description = "Allows previewing background removal"
+commands.allow = ["preview_bg_remove"]
+
+[[permission]]
+identifier = "allow-preview-vectorize"
+description = "Allows previewing vectorization"
+commands.allow = ["preview_vectorize"]
+
+[[permission]]
+identifier = "allow-preview-trim-pad"
+description = "Allows previewing trim & pad"
+commands.allow = ["preview_trim_pad"]
+
+[[permission]]
+identifier = "allow-list-presets"
+description = "Allows listing presets"
+commands.allow = ["list_presets"]
+
+[[permission]]
+identifier = "allow-get-preset"
+description = "Allows getting a preset"
+commands.allow = ["get_preset"]
+
+[[permission]]
+identifier = "allow-save-preset"
+description = "Allows saving a preset"
+commands.allow = ["save_preset"]
+
+[[permission]]
+identifier = "allow-delete-preset"
+description = "Allows deleting a preset"
+commands.allow = ["delete_preset"]
+
+[[permission]]
+identifier = "allow-list-recent-paths"
+description = "Allows listing recently used input/output paths"
+commands.allow = ["list_recent_paths"]
+
+[[permission]]
+identifier = "allow-add-recent-path"
+description = "Allows recording a recently used path"
+commands.allow = ["add_recent_path"]
+
+[[permission]]
+identifier = "allow-clear-recent-paths"
+description = "Allows clearing the recent path list"
+commands.allow = ["clear_recent_paths"]
+
+[[set]]
+identifier = "allow-all-commands"
+description = "Allows all custom Pixiekit commands"
+permissions = [
+    "allow-pick-folder",
+    "allow-pick-file",
+    "allow-run-bg-remove",
+    "allow-run-vectorize",
+    "allow-run-video-to-sprite",
+    "allow-run-atlas-pack",
+    "allow-run-optimize",
+    "allow-run-scale",
+    "allow-run-audio",
+    "allow-run-trim-pad",
+    "allow-run-svg-optimize",
+    "allow-run-nine-slice",
+    "allow-run-anim-preview",
+    "allow-preview-bg-remove",
+    "allow-preview-vectorize",
+    "allow-preview-trim-pad",
+    "allow-list-presets",
+    "allow-get-preset",
+    "allow-save-preset",
+    "allow-delete-preset",
+    "allow-list-recent-paths",
+    "allow-add-recent-path",
+    "allow-clear-recent-paths"
+]

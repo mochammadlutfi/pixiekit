@@ -45,6 +45,9 @@ pub enum Error {
     #[error("vtracer failed: {0}")]
     VtracerFailed(String),
 
+    #[error("PNG optimization failed: {0}")]
+    OxipngFailed(String),
+
     #[error("Could not locate user config directory: {0}")]
     ConfigDir(String),
 
@@ -56,4 +59,13 @@ pub enum Error {
 
     #[error("Preset tool mismatch: expected '{expected}', got '{got}'")]
     PresetToolMismatch { expected: String, got: String },
+
+    #[error("Atlas pack failed: {0}")]
+    AtlasPackFailed(String),
+
+    #[error("Atlas overflow: {fits} of {total} sprites fit in the bin (try increasing --max-size or disabling --power-of-two)")]
+    AtlasOverflow { fits: u32, total: u32 },
+
+    #[error("SVG parse failed: {0}")]
+    SvgParseFailed(String),
 }

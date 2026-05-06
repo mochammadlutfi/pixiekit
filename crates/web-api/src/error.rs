@@ -74,6 +74,11 @@ fn map_core_error(e: &CoreError) -> StatusCode {
         CoreError::NoFrames(_) => StatusCode::UNPROCESSABLE_ENTITY,
         CoreError::InconsistentFrameSize { .. } => StatusCode::UNPROCESSABLE_ENTITY,
         CoreError::VtracerFailed(_) => StatusCode::UNPROCESSABLE_ENTITY,
+        CoreError::OxipngFailed(_) => StatusCode::UNPROCESSABLE_ENTITY,
+        CoreError::AtlasPackFailed(_) | CoreError::AtlasOverflow { .. } => {
+            StatusCode::UNPROCESSABLE_ENTITY
+        }
+        CoreError::SvgParseFailed(_) => StatusCode::UNPROCESSABLE_ENTITY,
         CoreError::Io(_) | CoreError::Walk(_) => StatusCode::INTERNAL_SERVER_ERROR,
         // Preset-related errors are CLI-side concerns; the web API does not
         // expose presets, so any leaking here is unexpected.

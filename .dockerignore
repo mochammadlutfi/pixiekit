@@ -1,0 +1,47 @@
+# Build artifacts
+target/
+**/target/
+
+# JS/TS (apps/web has its own Dockerfile context)
+apps/
+!apps/web/src-tauri
+**/node_modules/
+**/.nuxt/
+**/.output/
+**/.nitro/
+**/.cache/
+**/dist/
+
+# Git / IDE
+.git/
+.github/
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+**/.DS_Store
+
+# Local env
+.env
+.env.local
+*.env
+config.local.toml
+
+# Logs
+*.log
+logs/
+
+# Docs (not needed inside builder)
+docs/
+*.md
+
+# Tests output
+tests/fixtures/output/
+tests/fixtures/.cache/
+
+# Python legacy
+__pycache__/
+*.pyc
+.venv/
+venv/

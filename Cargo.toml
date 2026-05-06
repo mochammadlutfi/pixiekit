@@ -5,6 +5,7 @@ members = [
     "crates/cli",
     "crates/mcp",
     "crates/web-api",
+    "apps/web/src-tauri",
 ]
 
 [workspace.package]
@@ -15,6 +16,7 @@ authors = ["Mochammad Lutfi <mochammadlutfi125@gmail.com>"]
 repository = "https://github.com/mochammadlutfi/pixiekit"
 
 [workspace.dependencies]
+pixiekit-core = { path = "crates/core" }
 anyhow = "1.0"
 thiserror = "1.0"
 serde = { version = "1.0", features = ["derive"] }
@@ -29,6 +31,17 @@ webp = "0.3"
 vtracer = "0.6"
 visioncortex = "0.8"
 directories = "5"
+texture_packer = "0.30"
+oxipng = { version = "9", default-features = false, features = ["parallel", "zopfli"] }
+usvg = { version = "0.47", default-features = false }
+base64 = "0.22"
+
+# Tauri
+tauri = { version = "2", features = [] }
+tauri-build = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-shell = "2"
 
 # Release profile — small binary, fast runtime
 [profile.release]

@@ -87,6 +87,61 @@ VITE_PIXIEKIT_API_URL=http://localhost:8765 pnpm dev
 
 See [`apps/web/README.md`](apps/web/README.md) for layout and conventions.
 
+## Desktop app (Phase 12 — Tauri bundle)
+
+Native desktop alternative for offline-first usage. Reuses the Nuxt frontend
+(`apps/web/`) and calls `pixiekit_core` directly via Tauri commands — no
+localhost server, no HTTP roundtrip.
+
+### Prerequisites
+
+- Rust toolchain (stable, 1.80+) — `rustup`
+- pnpm (Node 20+) — `npm i -g pnpm`
+- ffmpeg (for `video-to-sprite`, `audio`, `anim-preview`)
+- Platform webview deps:
+  - **macOS**: Xcode Command Line Tools (`xcode-select --install`)
+  - **Linux**: `libwebkit2gtk-4.1-dev`, `build-essential`, `libssl-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`
+  - **Windows**: WebView2 Runtime (preinstalled on Win11; otherwise via Microsoft installer)
+
+### Run in dev mode
+
+```bash
+cd apps/web
+pnpm install
+pnpm tauri:dev
+# → opens native window pointing at http://localhost:3000
+```
+
+### Build a release bundle
+
+```bash
+./scripts/build-desktop.sh
+# → apps/web/src-tauri/target/release/bundle/
+#     macos/Pixiekit.app
+#     dmg/Pixiekit_0.1.0_aarch64.dmg
+```
+
+To pick specific bundles:
+
+```bash
+./scripts/build-desktop.sh --bundles dmg          # macOS .dmg only
+./scripts/build-desktop.sh --bundles appimage,deb # Linux
+./scripts/build-desktop.sh --bundles msi          # Windows
+```
+
+### macOS Gatekeeper note
+
+Bundles are **not signed by default** — first-run requires Gatekeeper override
+(System Settings → Privacy & Security → "Open Anyway"). Code signing +
+notarization need an Apple Developer account ($99/yr); see
+[Tauri signing docs](https://v2.tauri.app/distribute/sign/macos/) for setup.
+
+### Recent paths cache
+
+The desktop app remembers the last 10 input/output paths in
+`~/.config/pixiekit/recent.json` (override via `PIXIEKIT_CONFIG_DIR`). Presets
+share the same config dir under `presets/`.
+
 ## Roadmap
 
 | Phase | Scope | Status |
@@ -97,7 +152,13 @@ See [`apps/web/README.md`](apps/web/README.md) for layout and conventions.
 | 4 | MCP server (stdio) | ✅ |
 | 5a | SaaS backend — axum REST API | ✅ |
 | 5b | SaaS frontend — Nuxt 4 dashboard | ✅ |
-| 6 | (Optional) Tauri desktop bundle | ⏳ |
+| 6 | Presets + humanized errors | ✅ |
+| 7 | Sprite Atlas Packer | ✅ |
+| 8 | Image Optimizer + Multi-DPI Scaler | ✅ |
+| 9 | Audio Processor | ✅ |
+| 10 | Trim & Pad + SVG Optimizer | ✅ |
+| 11 | 9-Slice + Animation Preview | ✅ |
+| 12 | Tauri desktop bundle | ✅ |
 
 ## License
 

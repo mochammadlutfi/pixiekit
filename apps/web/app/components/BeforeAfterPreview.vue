@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { ImageOff } from 'lucide-vue-next'
+
 interface Props {
   before?: string
   after?: string
@@ -11,35 +13,55 @@ withDefaults(defineProps<Props>(), {
 </script>
 
 <template>
-  <div class="grid grid-cols-2 gap-2">
-    <div class="space-y-1.5">
-      <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Before</p>
+  <div class="grid grid-cols-2 gap-3">
+    <figure class="space-y-1.5">
+      <figcaption class="flex items-center justify-between text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+        <span>Before</span>
+        <span class="rounded-full bg-muted px-1.5 py-0.5 text-[9px] tracking-wider text-muted-foreground/80">SRC</span>
+      </figcaption>
       <div
-        class="aspect-square w-full overflow-hidden rounded-md border bg-muted/30 flex items-center justify-center"
+        class="relative aspect-square w-full overflow-hidden rounded-lg border bg-muted/30"
       >
         <img
           v-if="before"
           :src="before"
           alt="Before"
-          class="max-h-full max-w-full object-contain"
+          class="absolute inset-0 size-full object-contain p-1"
+          loading="lazy"
         />
-        <span v-else class="text-xs text-muted-foreground">No input</span>
+        <div
+          v-else
+          class="absolute inset-0 flex flex-col items-center justify-center gap-1 text-muted-foreground/70"
+        >
+          <ImageOff class="size-5" aria-hidden="true" />
+          <span class="text-[11px]">Belum ada input</span>
+        </div>
       </div>
-    </div>
-    <div class="space-y-1.5">
-      <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">After</p>
+    </figure>
+    <figure class="space-y-1.5">
+      <figcaption class="flex items-center justify-between text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+        <span>After</span>
+        <span class="rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] tracking-wider text-primary/80">OUT</span>
+      </figcaption>
       <div
-        class="aspect-square w-full overflow-hidden rounded-md border flex items-center justify-center"
+        class="relative aspect-square w-full overflow-hidden rounded-lg border"
         :class="showCheckerOnAfter ? 'bg-checker' : 'bg-muted/30'"
       >
         <img
           v-if="after"
           :src="after"
           alt="After"
-          class="max-h-full max-w-full object-contain"
+          class="absolute inset-0 size-full object-contain p-1 animate-fade-in"
+          loading="lazy"
         />
-        <span v-else class="text-xs text-muted-foreground">No output yet</span>
+        <div
+          v-else
+          class="absolute inset-0 flex flex-col items-center justify-center gap-1 text-muted-foreground/70"
+        >
+          <ImageOff class="size-5" aria-hidden="true" />
+          <span class="text-[11px]">Belum di-process</span>
+        </div>
       </div>
-    </div>
+    </figure>
   </div>
 </template>

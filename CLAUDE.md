@@ -111,7 +111,12 @@ Phase 1; automated diff in Phase 6).
 | 5a | SaaS axum backend | ✅ done | `main` |
 | 5b | SaaS Nuxt 4 frontend | ✅ done | `main` |
 | 6 | Polish — presets across CLI/MCP/web + humanized errors | ✅ done | `main` |
-| 7 | (Optional) Tauri desktop | ⏳ deferred | — |
+| 7 | Sprite Atlas Packer | ✅ done | `main` |
+| 8 | Image Optimizer + Multi-Resolution Scaler | ✅ done | `main` |
+| 9 | Audio Processor | ✅ done | `main` |
+| 10 | Trim & Pad + SVG Optimizer | ✅ done | `main` |
+| 11 | 9-Slice Slicer + Animation Preview | ✅ done | `main` |
+| 12 | Tauri desktop bundle (offline-first GUI) | ✅ done | `main` |
 
 Phase 6 ships preset save/load uniformly across surfaces, all backed by
 `pixiekit_core::preset` (JSON under `~/.config/pixiekit/presets/`, override
@@ -127,6 +132,36 @@ with `PIXIEKIT_CONFIG_DIR`):
   mock mode.
 
 M6.4 humanizes per-tool input preflight errors with single-line hints.
+
+Phases 7-10 add six new asset-pipeline tools, each shipped end-to-end across
+core / CLI / MCP / web API / Nuxt frontend:
+
+- **Phase 7** — `atlas_pack` (`texture_packer` MaxRects + Flame TexturePacker
+  JSON Hash) — 1 atlas image + JSON metadata for game runtime draw-call
+  reduction.
+- **Phase 8** — `optimize` (`oxipng` + WebP/JPEG re-encode + metadata strip)
+  and `scale` (Lanczos resize, Flutter `1.0x/2.0x/3.0x/` / iOS `@suffix` /
+  nested naming).
+- **Phase 9** — `audio` (ffmpeg `loudnorm` + `silenceremove` + sample-rate /
+  channel / bitrate config; OGG / OPUS / MP3 / WAV).
+- **Phase 10** — `trim_pad` (alpha-aware bbox crop + uniform/square padding)
+  and `svg_optimize` (`usvg` parse + path-coord rounding + metadata/hidden
+  strip).
+
+All six tools are batch-capable via `rayon::par_iter`, support presets via
+`pixiekit_core::preset`, and expose multipart upload variants (atlas excepted —
+inherently a folder operation) on the web API.
+
+Phase 7-11 spec lengkap di [`docs/PRD.md`](docs/PRD.md) §6.4-6.11 (tool specs),
+§7.1.6-7.1.13 (CLI), §7.3.2 (MCP), §11 (per-phase milestones). Belum diimplementasi
+— tooling untuk completing Domdom World asset prep pipeline (atlas packing untuk
+game perf, multi-DPI scaling, audio normalize, trim/pad, SVG optimize, 9-slice UI,
+animation preview).
+
+Phase 12 (Tauri desktop bundle) di [`docs/PRD.md`](docs/PRD.md) §7.2 (UI spec) +
+§11 Phase 12 milestones. Native `Pixiekit.app` sebagai alternatif Nuxt SaaS untuk
+user offline-first. Reuse `core` crate, no HTTP roundtrip. Sebaiknya last (after
+Phase 7-11) karena perlu wire semua 11 tools ke Tauri commands.
 
 When starting a new phase, create a feature branch:
 `git checkout -b feat/phase-N-{tool}`. Merge to `main` via PR (or fast-forward

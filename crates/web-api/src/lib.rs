@@ -9,13 +9,19 @@ pub mod upload;
 
 use std::time::Duration;
 
+use axum::extract::DefaultBodyLimit;
 use axum::Router;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::trace::TraceLayer;
 
-/// 100 MiB request body limit — videos can be large.
-pub const REQUEST_BODY_LIMIT: usize = 100 * 1024 * 1024;
+/// 50 MiB request body ceiling — uploads (image / video) hit this limit per file.
+///
+/// Both `DefaultBodyLimit` (axum's per-extractor cap, default 2 MiB) and
+/// `RequestBodyLimitLayer` (tower-http's stream-level cap) need to be raised
+/// together; otherwise multipart uploads larger than 2 MiB fail with a generic
+/// "Error parsing `multipart/form-data` request" rejection.
+pub const REQUEST_BODY_LIMIT: usize = 50 * 1024 * 1024;
 
 /// Build the axum router with all routes and middleware.
 ///
@@ -30,10 +36,19 @@ pub fn build_router(cors_origins: Option<Vec<String>>) -> Router {
     Router::new()
         .merge(routes::health::router())
         .merge(routes::bg_remove::router())
+        .merge(routes::nine_slice::router())
+        .merge(routes::anim_preview::router())
         .merge(routes::video_to_sprite::router())
         .merge(routes::vectorize::router())
+        .merge(routes::atlas_pack::router())
+        .merge(routes::optimize::router())
+        .merge(routes::scale::router())
+        .merge(routes::audio::router())
+        .merge(routes::trim_pad::router())
+        .merge(routes::svg_optimize::router())
         .merge(routes::presets::router())
         .layer(cors)
+        .layer(DefaultBodyLimit::max(REQUEST_BODY_LIMIT))
         .layer(RequestBodyLimitLayer::new(REQUEST_BODY_LIMIT))
         .layer(TraceLayer::new_for_http())
 }
@@ -50,6 +65,7 @@ fn build_cors(cors_origins: Option<Vec<String>>) -> CorsLayer {
             let origins: Vec<_> = if list.is_empty() {
                 vec![
                     "http://localhost:3000".parse().unwrap(),
+                    "http://localhost:3100".parse().unwrap(),
                     "http://localhost:5173".parse().unwrap(),
                 ]
             } else {

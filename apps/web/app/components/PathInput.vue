@@ -8,10 +8,14 @@ interface Props {
   label: string
   placeholder?: string
   storageKey: string
+  type?: 'folder' | 'file'
+  filters?: string[] // For file picker
 }
 
 const props = withDefaults(defineProps<Props>(), {
   placeholder: '/Users/you/path/to/folder',
+  type: 'folder',
+  filters: () => [],
 })
 
 const emit = defineEmits<{
@@ -39,8 +43,33 @@ function pickRecent(p: string) {
   showRecent.value = false
 }
 
-async function pickFolder() {
+async function pickPath() {
+  // Check for Tauri environment
+  const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+  if (isTauri) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      const command = props.type === 'file' ? 'pick_file' : 'pick_folder'
+      const args = props.type === 'file' ? { filters: props.filters } : {}
+      const path = await invoke<string | null>(command, args)
+      if (path) {
+        localValue.value = path
+        commitRecent(path)
+      }
+    } catch (err) {
+      console.error(`Tauri ${props.type} picker failed:`, err)
+    }
+    return
+  }
+
   // File System Access API — Chrome / Edge only
+  if (props.type === 'file') {
+    // We could implement showOpenFilePicker here if needed, but the web version
+    // mostly relies on <input type="file"> for single files.
+    alert('File picking in browser mode is not yet standard. Please paste the path.')
+    return
+  }
+
   const win = window as unknown as {
     showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle>
   }
@@ -52,8 +81,6 @@ async function pickFolder() {
   }
   try {
     const handle = await win.showDirectoryPicker()
-    // Browser API gives us a handle but no full filesystem path for security.
-    // We fall back to the handle name and let the user verify/edit.
     const proposed = `/${handle.name}`
     localValue.value = proposed
     commitRecent(proposed)
@@ -77,8 +104,8 @@ async function pickFolder() {
       <button
         type="button"
         class="inline-flex h-10 w-10 items-center justify-center rounded-md border border-input bg-background text-muted-foreground hover:text-foreground"
-        title="Pick folder (Chrome/Edge)"
-        @click="pickFolder"
+        :title="type === 'file' ? 'Pick file' : 'Pick folder'"
+        @click="pickPath"
       >
         <Folder class="size-4" />
       </button>

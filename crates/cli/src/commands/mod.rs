@@ -1,7 +1,15 @@
+pub mod atlas_pack;
+pub mod audio;
 pub mod bg_remove;
+pub mod optimize;
 pub mod preset;
+pub mod scale;
+pub mod svg_optimize;
+pub mod trim_pad;
 pub mod vectorize;
 pub mod video_to_sprite;
+pub mod nine_slice;
+pub mod anim_preview;
 
 use std::path::Path;
 

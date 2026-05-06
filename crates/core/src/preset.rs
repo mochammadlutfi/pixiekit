@@ -23,6 +23,14 @@ pub const PRESET_VERSION: u32 = 1;
 pub const TOOL_BG_REMOVE: &str = "bg-remove";
 pub const TOOL_VECTORIZE: &str = "vectorize";
 pub const TOOL_VIDEO_TO_SPRITE: &str = "video-to-sprite";
+pub const TOOL_ATLAS_PACK: &str = "atlas-pack";
+pub const TOOL_OPTIMIZE: &str = "optimize";
+pub const TOOL_SCALE: &str = "scale";
+pub const TOOL_AUDIO: &str = "audio";
+pub const TOOL_TRIM_PAD: &str = "trim-pad";
+pub const TOOL_SVG_OPTIMIZE: &str = "svg-optimize";
+pub const TOOL_NINE_SLICE: &str = "nine-slice";
+pub const TOOL_ANIM_PREVIEW: &str = "anim-preview";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Preset {
@@ -157,16 +165,12 @@ fn validate_name(name: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Mutex, MutexGuard, OnceLock};
+    use std::sync::MutexGuard;
 
-    /// Tests share a process-global env var, so serialize them on a single
-    /// mutex. The previous-value snapshot is captured at scope entry and
-    /// restored on drop, so tests don't leak state into one another.
+    /// Shared with `recent` tests via `crate::test_util` — both modules mutate
+    /// `PIXIEKIT_CONFIG_DIR`, so they serialize on the same process-global mutex.
     fn env_lock() -> MutexGuard<'static, ()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
+        crate::test_util::config_dir_lock()
     }
 
     struct ScopedConfigDir {
