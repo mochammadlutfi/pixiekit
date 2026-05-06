@@ -1,0 +1,60 @@
+# Pixiekit — Coolify deployment compose
+#
+# Coolify v4 manages reverse-proxy (Traefik), TLS (Let's Encrypt), and
+# container scoping (names / volumes / network) automatically. This compose
+# stays minimal: just declare services + their internal ports + env vars.
+# Domains are configured in the Coolify UI, not in this file.
+#
+# How to deploy in Coolify:
+#   1. New Resource → Docker Compose
+#   2. Source: this repo's `feat/phase-7-12-tauri` (or `main` after merge)
+#   3. Compose file: docker-compose.coolify.yml
+#   4. Environment Variables (set in Coolify UI):
+#        CORS_ALLOWED_ORIGINS=https://pixiekit.lutfi.dev
+#        NUXT_PUBLIC_PIXIEKIT_API_URL=https://api.pixiekit.lutfi.dev
+#        RUST_LOG=info
+#   5. Domains tab:
+#        web     → pixiekit.lutfi.dev      (port 3000)
+#        web-api → api.pixiekit.lutfi.dev  (port 8765)
+#   6. Deploy.
+#
+# After first deploy, Coolify auto-issues Let's Encrypt certs for both hosts.
+
+services:
+  web-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: web-api
+    restart: unless-stopped
+    expose:
+      - "8765"
+    environment:
+      HOST: 0.0.0.0
+      PORT: "8765"
+      RUST_LOG: ${RUST_LOG:-info}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?set in Coolify env vars}
+    volumes:
+      - pixiekit-data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8765/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    expose:
+      - "3000"
+    environment:
+      NUXT_PUBLIC_PIXIEKIT_API_URL: ${NUXT_PUBLIC_PIXIEKIT_API_URL:?set in Coolify env vars}
+    depends_on:
+      web-api:
+        condition: service_started
+
+volumes:
+  pixiekit-data:
